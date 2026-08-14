@@ -1,0 +1,11 @@
+import { S } from "../../lib/styles";
+import { rpeC } from "../../lib/utils";
+
+export function Card({ children, style }) { return <div style={{ ...S.card, ...style }}>{children}</div>; }
+export function Lbl({ children, m0 }) { return <div style={{ ...S.lbl, ...(m0 ? { margin: 0 } : {}) }}>{children}</div>; }
+export function Title({ children }) { return <div style={S.title}>{children}</div>; }
+export function Mini({ label, value, color }) { return <div style={S.mini}><div style={{ fontSize: 9, color: "#6b7280" }}>{label}</div><div style={{ fontSize: 18, fontWeight: 700, color }}>{value}</div></div>; }
+export function Inp({ label, value, onChange, type = "text", ph }) { return <div style={{ marginBottom: 8 }}><Lbl>{label}</Lbl><input type={type} value={value||""} onChange={e => onChange(e.target.value)} placeholder={ph} style={S.inp} /></div>; }
+export function Chips({ opts, labels, val, set, c = "#4ade80" }) { return <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>{opts.map((o, i) => (<button key={o} onClick={() => set(o)} style={{ ...S.chip, background: val === o ? c + "22" : "#1a1d21", color: val === o ? c : "#6b7280", borderColor: val === o ? c + "44" : "#222830" }}>{labels ? labels[i] : o}</button>))}</div>; }
+export function RPE({ val, set }) { return <div style={{ display: "flex", gap: 2, marginBottom: 8 }}>{[1,2,3,4,5,6,7,8,9,10].map(n => (<button key={n} onClick={() => set(String(n))} style={{ flex: 1, padding: "5px 0", borderRadius: 4, fontSize: 10, fontWeight: 600, cursor: "pointer", border: "none", fontFamily: "inherit", background: val === String(n) ? rpeC(n) : "#1a1d21", color: val === String(n) ? "#fff" : "#555" }}>{n}</button>))}</div>; }
+export function Rating({ l, v, set }) { return <div style={{ marginBottom: 8 }}><div style={{ fontSize: 10, color: "#8a919c", marginBottom: 3 }}>{l}</div><div style={{ display: "flex", gap: 2 }}>{[1,2,3,4,5,6,7,8,9,10].map(n => (<button key={n} onClick={() => set(String(n))} style={{ flex: 1, padding: "4px 0", borderRadius: 3, fontSize: 9, fontWeight: 600, cursor: "pointer", border: "none", fontFamily: "inherit", background: v === String(n) ? "#f59e0b" : "#1a1d21", color: v === String(n) ? "#fff" : "#555" }}>{n}</button>))}</div></div>; }

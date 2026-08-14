@@ -90,12 +90,22 @@ tinc-agenda/
 Substitueix `icon-192.png` i `icon-512.png` per les teves icones
 (amb fons transparent o del color que vulguis).
 
-### Afegir backend (per escalar)
-L'app ara usa `localStorage`. Per afegir sync entre dispositius:
+### Sync entre dispositius (Supabase, opcional)
+L'app usa `localStorage` per defecte. Per afegir sync entre dispositius amb login per enllaç màgic:
 1. Crea un projecte a [Supabase](https://supabase.com) (gratis)
-2. Crea una taula `user_data` amb columnes: `id`, `date`, `data` (jsonb)
-3. Substitueix les funcions `storage.get()` i `storage.set()` a App.jsx
-   per crides a Supabase
+2. Obre l'editor SQL del projecte i executa el contingut de `supabase/schema.sql`
+   (crea la taula `user_data` amb Row Level Security per usuari)
+3. Assegura't que el proveïdor "Email" (magic link) està activat a
+   Authentication → Providers
+4. Crea un fitxer `.env` (pots partir de `.env.example`) amb:
+```
+VITE_SUPABASE_URL=https://el-teu-projecte.supabase.co
+VITE_SUPABASE_ANON_KEY=la_teva_anon_key
+```
+5. Reinicia el servidor dev — ara l'app demanarà login per email abans d'entrar,
+   i les dades es guarden tant en local (còpia offline) com a Supabase.
+
+Sense aquestes variables, l'app funciona exactament igual que abans (només local).
 
 ### Domini custom
 Compra un domini (p.ex. tincagenda.com, ~12€/any a Namecheap)
