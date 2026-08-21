@@ -20,19 +20,28 @@ npm run dev
 Obre `http://localhost:5173` al navegador.
 
 ### 4. Google Calendar (opcional)
-Per sincronitzar el calendari:
-1. Ves a [Google Cloud Console](https://console.cloud.google.com/)
-2. Crea un projecte → activa "Google Calendar API"
-3. Crea una API Key (restringida a Calendar API)
-4. Crea un fitxer `.env` a l'arrel del projecte:
-```
-VITE_GCAL_API_KEY=la_teva_api_key
-VITE_GCAL_ID=primary
-```
-5. Reinicia el servidor dev
+La sincronització usa OAuth (inici de sessió amb Google), no una API key —
+necessari per llegir el teu calendari privat (no un de públic):
 
-> Si ja has sincronitzat Apple Calendar amb Google Calendar,
-> veuràs tots els events de les dues plataformes.
+1. Ves a [Google Cloud Console](https://console.cloud.google.com/)
+2. Crea un projecte → "APIs & Services" → activa **Google Calendar API**
+3. "APIs & Services" → **OAuth consent screen** → tipus "External", estat
+   **Testing** (no cal verificació de Google per a ús personal) → afegeix el
+   teu propi correu com a "Test user"
+4. "APIs & Services" → **Credentials** → "Create Credentials" → **OAuth
+   client ID** → tipus "Web application"
+   - Authorized JavaScript origins: `http://localhost:5173` (i el domini de
+     producció quan el desplega'ls, p.ex. `https://tincagenda.com`)
+5. Copia el "Client ID" i crea un fitxer `.env` a l'arrel del projecte:
+```
+VITE_GOOGLE_CLIENT_ID=el-teu-client-id.apps.googleusercontent.com
+```
+6. Reinicia el servidor dev. La primera vegada que premis "Connectar"
+   t'apareixerà el diàleg de consentiment de Google.
+
+> Com que Apple Calendar ja sincronitza (en un sol sentit) cap a Google
+> Calendar, connectar només amb Google ja et mostra els events de les dues
+> plataformes — no cal cap integració addicional amb Apple.
 
 ---
 
@@ -43,7 +52,7 @@ VITE_GCAL_ID=primary
 2. Ves a [vercel.com](https://vercel.com), fes login amb GitHub
 3. "Import Project" → selecciona el repo
 4. Framework: Vite. Build: `npm run build`. Output: `dist`
-5. Afegeix les variables d'entorn (VITE_GCAL_API_KEY, etc.)
+5. Afegeix les variables d'entorn (VITE_GOOGLE_CLIENT_ID, etc.) — i afegeix el domini de Vercel a "Authorized JavaScript origins" del Client ID a Google Cloud Console
 6. Deploy → ja tens URL pública
 
 ### Opció B: des de la terminal

@@ -10,6 +10,7 @@ export function groupByDay(events) { const m={}; events.forEach(e=>{const dk=(e.
 export function refSub(id, day, global) {
   if(id==="matches") return day.match?"Partit registrat":"Cap partit avui";
   if(id==="planner"){ const n=(global.trainingPlan||[]).length; return n?`${n} sessions planificades`:"Sense pla"; }
+  if(id==="formation"){ const dow=(new Date().getDay()+6)%7; const items=(global.formationPlan||[]).filter(f=>f.dow===dow); const done=items.filter(f=>day.formation?.[f.id]).length; return items.length?`${done}/${items.length} avui`:"Sense pla de formació"; }
   if(id==="physical") return `${day.training.filter(t=>t.category==="physical").length} sessions`;
   if(id==="cognitive") return `${(day.cognitive||[]).length} sessions`;
   if(id==="video") return `${(day.video||[]).length} sessions`;

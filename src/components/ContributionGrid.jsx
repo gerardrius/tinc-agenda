@@ -1,4 +1,4 @@
-import { HABITS } from "../lib/constants";
+import { HABIT_POOL } from "../lib/constants";
 import { habitColor } from "../lib/utils";
 
 export function ContributionGrid({ allData }) {
@@ -12,7 +12,7 @@ export function ContributionGrid({ allData }) {
     const dk = d.toISOString().split("T")[0];
     if (d > today) { cells.push({ dk, score: -1 }); continue; }
     const hd = allData[dk]?.habits;
-    cells.push({ dk, score: hd ? HABITS.filter(h => hd[h.id]).length : -1 });
+    cells.push({ dk, score: hd ? HABIT_POOL.filter(h => hd[h.id]).length : -1 });
   }
   const cols = [];
   for (let w = 0; w < Math.ceil(cells.length / 7); w++) cols.push(cells.slice(w * 7, w * 7 + 7));

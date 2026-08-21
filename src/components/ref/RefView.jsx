@@ -4,6 +4,7 @@ import { S } from "../../lib/styles";
 import { Title } from "../ui";
 import { MatchSec } from "./MatchSec";
 import { PlannerSec } from "./PlannerSec";
+import { FormationSec } from "./FormationSec";
 import { PhysSec } from "./PhysSec";
 import { CogSec } from "./CogSec";
 import { VidSec } from "./VidSec";
@@ -18,8 +19,9 @@ export function RefView({ day, sub, setSub, u, addEntry, removeEntry, updateEntr
     </button>))}</div>);
 
   return (<div><button onClick={() => setSub(null)} style={S.back}>← Arbitratge</button>
-    {sub === "matches" && <MatchSec day={day} persist={persist} />}
+    {sub === "matches" && <MatchSec day={day} persist={persist} global={global} saveGlobal={saveGlobal} />}
     {sub === "planner" && <PlannerSec global={global} saveGlobal={saveGlobal} />}
+    {sub === "formation" && <FormationSec day={day} u={u} global={global} saveGlobal={saveGlobal} />}
     {sub === "physical" && <PhysSec day={day} addEntry={addEntry} removeEntry={removeEntry} updateEntry={updateEntry} />}
     {sub === "cognitive" && <CogSec day={day} addEntry={addEntry} removeEntry={removeEntry} updateEntry={updateEntry} />}
     {sub === "video" && <VidSec day={day} addEntry={addEntry} removeEntry={removeEntry} updateEntry={updateEntry} />}

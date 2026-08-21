@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { HABITS, TABS } from "./lib/constants";
+import { TABS } from "./lib/constants";
 import { defaultDay, defaultGlobal } from "./lib/defaults";
 import { storage } from "./lib/storage";
 import { todayKey, uid, fmtDate } from "./lib/utils";
+import { suggestHabits, weekStartKey } from "./lib/habitSuggest";
 import { S } from "./lib/styles";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
 import { getSession, onAuthStateChange, fetchAll, upsertEntry, signOut } from "./lib/remoteStorage";
+import * as googleAuth from "./lib/googleAuth";
+import { fetchEvents } from "./lib/googleCalendar";
 import { AuthScreen } from "./components/AuthScreen";
 import { TodayView } from "./components/TodayView";
 import { HistoryView } from "./components/HistoryView";
@@ -23,6 +26,8 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [calEvents, setCalEvents] = useState(null);
   const [calLoading, setCalLoading] = useState(false);
+  const [calError, setCalError] = useState(null);
+  const [googleConnected, setGoogleConnected] = useState(Boolean(googleAuth.getToken()));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -97,35 +102,41 @@ export default function App() {
   const removeEntry = (section, id) => { const d = { ...day }; d[section] = d[section].filter(e => e.id !== id); persist(d); };
   const updateEntry = (section, id, field, val) => { const d = { ...day }; d[section] = d[section].map(e => e.id === id ? { ...e, [field]: val } : e); persist(d); };
 
-  /* ── Google Calendar fetch ──
-     Per fer servir això, necessites una API key o OAuth.
-     Ara mateix és un placeholder — configura VITE_GCAL_API_KEY al .env
-     o substitueix per la teva integració preferida. */
+  /* ── Google Calendar sync ──
+     OAuth via Google Identity Services (src/lib/googleAuth.js). First call
+     triggers the consent popup; subsequent calls just refresh events.
+     Reads the real signed-in calendar, which already includes Apple
+     Calendar events (one-way Apple → Google sync). See README for the
+     one-time Google Cloud Console setup (VITE_GOOGLE_CLIENT_ID). */
   const fetchCalendar = async () => {
     setCalLoading(true);
+    setCalError(null);
     try {
-      const apiKey = import.meta.env.VITE_GCAL_API_KEY;
-      const calId = import.meta.env.VITE_GCAL_ID || 'primary';
-      if (!apiKey) {
-        // Demo mode: show placeholder
-        setCalEvents([]);
+      if (!googleAuth.isConfigured()) {
+        setCalError("Falta configurar VITE_GOOGLE_CLIENT_ID (mira el README).");
         setCalLoading(false);
         return;
       }
-      const now = new Date().toISOString();
-      const future = new Date(Date.now() + 14 * 86400000).toISOString();
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?key=${apiKey}&timeMin=${now}&timeMax=${future}&singleEvents=true&orderBy=startTime&maxResults=50`;
-      const res = await fetch(url);
-      const data = await res.json();
-      const events = (data.items || []).map(e => ({
-        title: e.summary || "Event",
-        start: e.start?.dateTime || e.start?.date || "",
-        end: e.end?.dateTime || e.end?.date || "",
-        location: e.location || "",
-        description: e.description || "",
-      }));
-      setCalEvents(events);
-    } catch { setCalEvents([]); }
+      let token = googleAuth.getToken();
+      if (!token) token = await googleAuth.connect();
+      setGoogleConnected(true);
+      try {
+        const events = await fetchEvents(token);
+        setCalEvents(events);
+      } catch (e) {
+        if (e.code === 401) {
+          googleAuth.disconnect();
+          setGoogleConnected(false);
+          const freshToken = await googleAuth.connect();
+          setGoogleConnected(true);
+          const events = await fetchEvents(freshToken);
+          setCalEvents(events);
+        } else throw e;
+      }
+    } catch (e) {
+      console.error("Error sincronitzant amb Google Calendar:", e);
+      setCalError(e.message || "Error sincronitzant amb Google Calendar.");
+    }
     setCalLoading(false);
   };
 
@@ -133,7 +144,13 @@ export default function App() {
   if (isSupabaseConfigured && !session) return <AuthScreen />;
   if (!day) return <div style={S.loadWrap}><p style={{ color: "#6b7280" }}>Carregant...</p></div>;
 
-  const habitsDone = HABITS.filter(h => day.habits[h.id]).length;
+  const wk = weekStartKey();
+  const weekPlan = (global.weeklyPlans || {})[wk];
+  const todaysMatch = (global.matches || []).find(m => m.date === todayKey());
+  const habitsList = suggestHabits({ weekPlan, hasMatchToday: Boolean(todaysMatch || day.match) });
+  const customHabits = day.customHabits || [];
+  const habitsTotal = habitsList.length + customHabits.length;
+  const habitsDone = habitsList.filter(h => day.habits[h.id]).length + customHabits.filter(h => day.habits[h.id]).length;
 
   return (
     <div style={S.app}>
@@ -147,7 +164,7 @@ export default function App() {
             )}
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 26, fontWeight: 800, color: habitsDone === 6 ? "#4ade80" : "#e5e7eb" }}>{habitsDone}/6</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: habitsDone === habitsTotal && habitsTotal > 0 ? "#4ade80" : "#e5e7eb" }}>{habitsDone}/{habitsTotal}</div>
             <div style={{ fontSize: 8, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.1em" }}>hàbits</div>
           </div>
         </div>
@@ -155,11 +172,11 @@ export default function App() {
 
       <div style={S.body}>
         {tab === "today" && sub === "history" && <HistoryView {...{ allData, setSub }} />}
-        {tab === "today" && sub !== "history" && <TodayView {...{ day, u, toggleHabit, habitsDone, allData, calEvents, fetchCalendar, calLoading, addEntry, removeEntry, updateEntry, setSub }} />}
-        {tab === "ref" && <RefView {...{ day, sub, setSub, u, addEntry, removeEntry, updateEntry, persist, global, saveGlobal }} />}
+        {tab === "today" && sub !== "history" && <TodayView {...{ day, u, toggleHabit, habitsDone, allData, calEvents, fetchCalendar, calLoading, calError, googleConnected, addEntry, removeEntry, updateEntry, persist, global, saveGlobal, setSub, sub }} />}
+        {tab === "ref" && <RefView {...{ day, sub, setSub, u, addEntry, removeEntry, updateEntry, persist, global, saveGlobal, googleConnected, fetchCalendar: fetchCalendar }} />}
         {tab === "work" && <WorkView {...{ day, addEntry, removeEntry, updateEntry, global, saveGlobal }} />}
         {tab === "life" && <LifeView {...{ day, u, addEntry, removeEntry, updateEntry }} />}
-        {tab === "cal" && <CalView {...{ calEvents, fetchCalendar, calLoading, global, saveGlobal }} />}
+        {tab === "cal" && <CalView {...{ calEvents, fetchCalendar, calLoading, calError, global, saveGlobal }} />}
       </div>
 
       <div style={S.tabBar} className="app-tabbar">

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HABITS, MOODS } from "../lib/constants";
+import { HABIT_POOL, MOODS } from "../lib/constants";
 import { habitColor, fmtDate, todayKey } from "../lib/utils";
 import { S } from "../lib/styles";
 import { Card, Lbl, Title } from "./ui";
@@ -12,9 +12,10 @@ function TrendChart({ allData }) {
     const d = new Date(today); d.setDate(d.getDate() - i);
     const dk = d.toISOString().split("T")[0];
     const dd = allData[dk];
-    const habitsN = dd?.habits ? HABITS.filter(h => dd.habits[h.id]).length : -1;
+    const total = HABIT_POOL.length + (dd?.customHabits || []).length;
+    const habitsN = dd?.habits ? [...HABIT_POOL, ...(dd.customHabits || [])].filter(h => dd.habits[h.id]).length : -1;
     const mood = dd?.mood ? MOODS.find(m => m.id === dd.mood) : null;
-    cells.push({ dk, habitsN, mood });
+    cells.push({ dk, habitsN, total, mood });
   }
   const maxH = 30;
   return (
@@ -22,8 +23,8 @@ function TrendChart({ allData }) {
       <Lbl>Hàbits · últims 30 dies</Lbl>
       <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: maxH, marginBottom: 12 }}>
         {cells.map(c => (
-          <div key={c.dk} title={`${c.dk} · ${c.habitsN >= 0 ? c.habitsN + "/6" : "sense dades"}`}
-            style={{ flex: 1, height: c.habitsN < 0 ? 3 : Math.max(3, (c.habitsN / 6) * maxH), background: habitColor(c.habitsN), borderRadius: 1 }} />
+          <div key={c.dk} title={`${c.dk} · ${c.habitsN >= 0 ? c.habitsN + "/" + c.total : "sense dades"}`}
+            style={{ flex: 1, height: c.habitsN < 0 ? 3 : Math.max(3, (c.habitsN / Math.max(1, c.total)) * maxH), background: habitColor(c.habitsN), borderRadius: 1 }} />
         ))}
       </div>
       <Lbl>Estat d'ànim · últims 30 dies</Lbl>
@@ -38,7 +39,9 @@ function TrendChart({ allData }) {
 }
 
 function DayDetail({ dk, dd, onBack }) {
-  const habitsDone = dd.habits ? HABITS.filter(h => dd.habits[h.id]).length : 0;
+  const allHabits = [...HABIT_POOL, ...(dd.customHabits || [])];
+  const habitsDone = dd.habits ? allHabits.filter(h => dd.habits[h.id]).length : 0;
+  const habitsTotal = allHabits.length;
   const mood = dd.mood ? MOODS.find(m => m.id === dd.mood) : null;
   return (
     <div>
@@ -46,7 +49,7 @@ function DayDetail({ dk, dd, onBack }) {
       <div style={{ ...S.title, textTransform: "capitalize" }}>{fmtDate(new Date(dk + "T12:00"))}</div>
 
       <div style={S.g2}>
-        <div style={S.mini}><div style={{ fontSize: 9, color: "#6b7280" }}>Hàbits</div><div style={{ fontSize: 18, fontWeight: 700, color: habitsDone === 6 ? "#4ade80" : "#e5e7eb" }}>{habitsDone}/6</div></div>
+        <div style={S.mini}><div style={{ fontSize: 9, color: "#6b7280" }}>Hàbits</div><div style={{ fontSize: 18, fontWeight: 700, color: habitsDone === habitsTotal && habitsTotal > 0 ? "#4ade80" : "#e5e7eb" }}>{habitsDone}/{habitsTotal}</div></div>
         <div style={S.mini}><div style={{ fontSize: 9, color: "#6b7280" }}>Estat</div><div style={{ fontSize: 18, fontWeight: 700 }}>{mood ? mood.emoji : "—"}</div></div>
       </div>
 
@@ -54,7 +57,7 @@ function DayDetail({ dk, dd, onBack }) {
 
       <Card>
         <Lbl>Hàbits</Lbl>
-        {HABITS.map(h => (
+        {allHabits.map(h => (
           <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
             <span style={{ ...S.chk, width: 16, height: 16, fontSize: 9, background: dd.habits?.[h.id] ? "#4ade80" : "#252a30", color: dd.habits?.[h.id] ? "#000" : "#444" }}>{dd.habits?.[h.id] ? "✓" : ""}</span>
             <span style={{ fontSize: 11, color: dd.habits?.[h.id] ? "#a7f3d0" : "#6b7280" }}>{h.text}</span>
@@ -120,7 +123,8 @@ export function HistoryView({ allData, setSub }) {
       {days.length === 0 && <p style={{ ...S.muted, textAlign: "center", marginTop: 20 }}>Encara no hi ha dies registrats.</p>}
       {days.map(dk => {
         const dd = allData[dk];
-        const habitsDone = dd.habits ? HABITS.filter(h => dd.habits[h.id]).length : 0;
+        const dayHabits = [...HABIT_POOL, ...(dd.customHabits || [])];
+        const habitsDone = dd.habits ? dayHabits.filter(h => dd.habits[h.id]).length : 0;
         const mood = dd.mood ? MOODS.find(m => m.id === dd.mood) : null;
         return (
           <button key={dk} onClick={() => setSelDay(dk)} style={S.navC}>
@@ -129,7 +133,7 @@ export function HistoryView({ allData, setSub }) {
               <div style={{ fontSize: 10, color: "#6b7280" }}>{dk}</div>
             </div>
             <span style={{ fontSize: 16 }}>{mood ? mood.emoji : "—"}</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: habitColor(habitsDone), minWidth: 26, textAlign: "right" }}>{habitsDone}/6</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: habitColor(habitsDone), minWidth: 26, textAlign: "right" }}>{habitsDone}/{dayHabits.length}</span>
             <span style={{ color: "#444" }}>→</span>
           </button>
         );

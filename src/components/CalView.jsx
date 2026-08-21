@@ -3,12 +3,13 @@ import { todayKey, fmtDate, fmtTime, groupByDay } from "../lib/utils";
 import { S } from "../lib/styles";
 import { Title } from "./ui";
 
-export function CalView({ calEvents, fetchCalendar, calLoading, global, saveGlobal }) {
+export function CalView({ calEvents, fetchCalendar, calLoading, calError, global, saveGlobal }) {
   const prios = global.eventPriorities || {};
   const setPrio = (title, prio) => saveGlobal({ ...global, eventPriorities: { ...prios, [title]: prio } });
   return (<div>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><Title>Agenda</Title><button onClick={fetchCalendar} style={S.pBtn}>{calLoading ? "..." : "Sincronitzar"}</button></div>
-    {!calEvents && <p style={{ ...S.muted, textAlign: "center", marginTop: 30 }}>Prem sincronitzar per connectar amb els teus calendaris.</p>}
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><Title>Agenda</Title><button onClick={fetchCalendar} style={S.pBtn}>{calLoading ? "..." : calEvents ? "Sincronitzar" : "Connectar"}</button></div>
+    {calError && <p style={{ ...S.muted, color: "#ef4444", textAlign: "center", marginTop: 30 }}>{calError}</p>}
+    {!calEvents && !calError && <p style={{ ...S.muted, textAlign: "center", marginTop: 30 }}>Prem connectar per sincronitzar amb Google Calendar (inclou Apple Calendar).</p>}
     {calEvents && calEvents.length === 0 && <p style={{ ...S.muted, textAlign: "center", marginTop: 30 }}>Cap event proper.</p>}
     {calEvents && calEvents.length > 0 && groupByDay(calEvents).map(([dk, evts]) => (
       <div key={dk} style={{ marginBottom: 16 }}>

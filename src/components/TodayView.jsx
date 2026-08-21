@@ -1,20 +1,76 @@
-import { HABITS, MOODS } from "../lib/constants";
-import { todayKey, fmtTime } from "../lib/utils";
+import { useState } from "react";
+import { MOODS } from "../lib/constants";
+import { todayKey, fmtTime, uid } from "../lib/utils";
+import { suggestHabits, weekStartKey } from "../lib/habitSuggest";
 import { S } from "../lib/styles";
 import { Card, Lbl, Mini } from "./ui";
 import { ContributionGrid } from "./ContributionGrid";
+import { WeekPlanSec } from "./WeekPlanSec";
 
-export function TodayView({ day, u, toggleHabit, habitsDone, allData, calEvents, fetchCalendar, calLoading, addEntry, removeEntry, setSub }) {
+export function TodayView({ day, u, toggleHabit, allData, calEvents, fetchCalendar, calLoading, calError, googleConnected, addEntry, removeEntry, global, saveGlobal, setSub, sub }) {
+  const [newHabitText, setNewHabitText] = useState("");
+
+  if (sub === "weekplan") return <WeekPlanSec global={global} saveGlobal={saveGlobal} setSub={setSub} />;
+
+  const wk = weekStartKey();
+  const weekPlan = (global.weeklyPlans || {})[wk];
+  const isSunday = new Date().getDay() === 0;
+  const todaysMatch = (global.matches || []).find(m => m.date === todayKey());
+  const habits = suggestHabits({ weekPlan, hasMatchToday: Boolean(todaysMatch || day.match) });
+  const customHabits = day.customHabits || [];
+  const habitsDone = habits.filter(h => day.habits[h.id]).length + customHabits.filter(h => day.habits[h.id]).length;
+  const habitsTotal = habits.length + customHabits.length;
+
+  const addCustomHabit = () => {
+    if (!newHabitText.trim()) return;
+    u("customHabits", null, [...customHabits, { id: uid(), text: newHabitText.trim() }]);
+    setNewHabitText("");
+  };
+  const removeCustomHabit = (id) => u("customHabits", null, customHabits.filter(h => h.id !== id));
+
+  const pastMatchNoLog = (global.matches || []).filter(m => m.date < todayKey() && m.status !== "done").sort((a, b) => b.date.localeCompare(a.date))[0];
+
   return (
     <div>
+      {!weekPlan && (
+        <button onClick={() => setSub("weekplan")} style={{ ...S.navC, borderColor: "#a78bfa33", background: "#a78bfa0d" }}>
+          <span style={{ fontSize: 18 }}>🗓️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#e5e7eb" }}>{isSunday ? "Toca planificar la setmana" : "Encara no has planificat aquesta setmana"}</div>
+            <div style={{ fontSize: 10, color: "#6b7280" }}>Defineix objectius per rebre hàbits suggerits</div>
+          </div>
+          <span style={{ color: "#444" }}>→</span>
+        </button>
+      )}
+
+      {todaysMatch && (
+        <Card style={{ borderColor: "#f59e0b33", background: "#f59e0b0d" }}>
+          <Lbl>⚽ Partit avui</Lbl>
+          <div style={{ fontSize: 13, color: "#e5e7eb", fontWeight: 600 }}>{todaysMatch.teams || "Partit"}</div>
+          <div style={{ fontSize: 11, color: "#8a919c", marginTop: 2 }}>{todaysMatch.competition} {todaysMatch.time ? `· ${todaysMatch.time}` : ""}</div>
+          {todaysMatch.preNotes && <p style={{ fontSize: 11, color: "#e5e7eb", marginTop: 8, whiteSpace: "pre-wrap" }}>{todaysMatch.preNotes}</p>}
+        </Card>
+      )}
+
+      {pastMatchNoLog && (
+        <button onClick={() => setSub(null)} style={{ ...S.navC, borderColor: "#ef444433", background: "#ef44440d" }}>
+          <span style={{ fontSize: 18 }}>📝</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#e5e7eb" }}>Tens un partit pendent de valorar</div>
+            <div style={{ fontSize: 10, color: "#6b7280" }}>{pastMatchNoLog.teams} — {pastMatchNoLog.date}. Registra'l a Arbitratge → Partits.</div>
+          </div>
+        </button>
+      )}
+
       <Card><Lbl>Focus principal d'avui</Lbl><textarea style={S.ta} value={day.focus || ""} onChange={e => u("focus", null, e.target.value)} placeholder="Una frase. El que importa avui." rows={2} /></Card>
 
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
           <Lbl m0>Agenda d'avui</Lbl>
-          <button onClick={fetchCalendar} style={S.smBtn}>{calLoading ? "..." : "Sincronitzar"}</button>
+          <button onClick={fetchCalendar} style={S.smBtn}>{calLoading ? "..." : googleConnected ? "Sincronitzar" : "Connectar"}</button>
         </div>
-        {!calEvents && <p style={S.muted}>Prem sincronitzar per carregar Google + Apple Calendar.</p>}
+        {calError && <p style={{ ...S.muted, color: "#ef4444" }}>{calError}</p>}
+        {!calEvents && !calError && <p style={S.muted}>Prem connectar per carregar Google + Apple Calendar.</p>}
         {calEvents?.filter(e => e.start?.includes(todayKey())).map((e, i) => (
           <div key={i} style={S.evRow}><span style={{ fontSize: 11, color: "#4ade80", fontFamily: "monospace", minWidth: 44 }}>{fmtTime(e.start)}</span><span style={{ fontSize: 12, color: "#e5e7eb" }}>{e.title}</span></div>
         ))}
@@ -29,13 +85,28 @@ export function TodayView({ day, u, toggleHabit, habitsDone, allData, calEvents,
       </div>
 
       <Card>
-        <Lbl>Hàbits</Lbl>
-        {HABITS.map(h => (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <Lbl m0>Hàbits {habitsTotal ? `(${habitsDone}/${habitsTotal})` : ""}</Lbl>
+        </div>
+        {habits.map(h => (
           <button key={h.id} onClick={() => toggleHabit(h.id)} style={{ ...S.habBtn, background: day.habits[h.id] ? "rgba(74,222,128,0.07)" : "transparent", borderColor: day.habits[h.id] ? "rgba(74,222,128,0.22)" : "#252a30" }}>
             <span style={{ ...S.chk, background: day.habits[h.id] ? "#4ade80" : "#252a30", color: day.habits[h.id] ? "#000" : "#444" }}>{day.habits[h.id] ? "✓" : ""}</span>
             <span style={{ fontSize: 12, color: day.habits[h.id] ? "#a7f3d0" : "#888" }}>{h.text}</span>
           </button>
         ))}
+        {customHabits.map(h => (
+          <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <button onClick={() => toggleHabit(h.id)} style={{ ...S.habBtn, flex: 1, background: day.habits[h.id] ? "rgba(74,222,128,0.07)" : "transparent", borderColor: day.habits[h.id] ? "rgba(74,222,128,0.22)" : "#252a30" }}>
+              <span style={{ ...S.chk, background: day.habits[h.id] ? "#4ade80" : "#252a30", color: day.habits[h.id] ? "#000" : "#444" }}>{day.habits[h.id] ? "✓" : ""}</span>
+              <span style={{ fontSize: 12, color: day.habits[h.id] ? "#a7f3d0" : "#888" }}>{h.text}</span>
+            </button>
+            <button onClick={() => removeCustomHabit(h.id)} style={{ ...S.delBtn, fontSize: 14 }}>×</button>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <input style={{ ...S.inp, flex: 1, fontSize: 12 }} value={newHabitText} onChange={e => setNewHabitText(e.target.value)} placeholder="+ afegir hàbit d'avui..." onKeyDown={e => e.key === "Enter" && addCustomHabit()} />
+          <button onClick={addCustomHabit} style={S.smBtn}>Afegir</button>
+        </div>
       </Card>
 
       <Card>
