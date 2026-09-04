@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { MOODS, FEELINGS } from "../lib/constants";
 import { S } from "../lib/styles";
-import { Card, Chips, Inp, Lbl, Title } from "./ui";
+import { Card, Inp, Lbl, Title } from "./ui";
+import { SleepMapSec } from "./SleepMapSec";
 
 export function LifeView({ day, u, addEntry, removeEntry, updateEntry }) {
   const [lt, setLt] = useState("mood");
@@ -37,6 +38,6 @@ export function LifeView({ day, u, addEntry, removeEntry, updateEntry }) {
       {parseInt(day.screen.social) > 20 && <div style={{ border: "1px solid #ef444433", background: "#ef444408", borderRadius: 8, padding: "8px 12px", marginTop: 6 }}><p style={{ color: "#ef4444", fontSize: 11, margin: 0 }}>⚠️ Per sobre de 20 min en xarxes.</p></div>}
     </div>)}
 
-    {lt === "sleep" && (<Card><Inp label="Hores dormides" value={day.sleep.hours} onChange={v => u("sleep", "hours", v)} type="number" /><Inp label="Anar a dormir" value={day.sleep.bedtime} onChange={v => u("sleep", "bedtime", v)} ph="22:30" /><Inp label="Llevar-te" value={day.sleep.waketime} onChange={v => u("sleep", "waketime", v)} ph="6:50" /><Lbl>Qualitat</Lbl><Chips opts={["Molt dolenta","Dolenta","Regular","Bona","Excel·lent"]} val={day.sleep.quality} set={v => u("sleep", "quality", v)} c="#818cf8" /></Card>)}
+    {lt === "sleep" && <SleepMapSec />}
   </div>);
 }

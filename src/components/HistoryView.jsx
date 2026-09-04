@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { HABIT_POOL, MOODS } from "../lib/constants";
 import { habitColor, fmtDate, todayKey } from "../lib/utils";
+import { useGarminSleepByDate } from "../lib/sleepMapApi";
 import { S } from "../lib/styles";
 import { Card, Lbl, Title } from "./ui";
 
@@ -39,6 +40,8 @@ function TrendChart({ allData }) {
 }
 
 function DayDetail({ dk, dd, onBack }) {
+  const garminSleep = useGarminSleepByDate();
+  const sleepThatDay = garminSleep?.[dk];
   const allHabits = [...HABIT_POOL, ...(dd.customHabits || [])];
   const habitsDone = dd.habits ? allHabits.filter(h => dd.habits[h.id]).length : 0;
   const habitsTotal = allHabits.length;
@@ -78,7 +81,7 @@ function DayDetail({ dk, dd, onBack }) {
 
       <div style={S.g2}>
         <div style={S.mini}><div style={{ fontSize: 9, color: "#6b7280" }}>Pantalla</div><div style={{ fontSize: 16, fontWeight: 700 }}>{dd.screen?.total ? dd.screen.total + "'" : "—"}</div></div>
-        <div style={S.mini}><div style={{ fontSize: 9, color: "#6b7280" }}>Son</div><div style={{ fontSize: 16, fontWeight: 700 }}>{dd.sleep?.hours ? dd.sleep.hours + "h" : "—"}</div></div>
+        <div style={S.mini}><div style={{ fontSize: 9, color: "#6b7280" }}>Son</div><div style={{ fontSize: 16, fontWeight: 700 }}>{sleepThatDay?.hours ? sleepThatDay.hours.toFixed(1) + "h" : "—"}</div></div>
       </div>
 
       {dd.match && (

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { MOODS } from "../lib/constants";
 import { todayKey, fmtTime, uid } from "../lib/utils";
+import { useGarminSleepByDate } from "../lib/sleepMapApi";
 import { suggestHabits, weekStartKey } from "../lib/habitSuggest";
 import { S } from "../lib/styles";
 import { Card, Lbl, Mini } from "./ui";
@@ -9,6 +10,8 @@ import { WeekPlanSec } from "./WeekPlanSec";
 
 export function TodayView({ day, u, toggleHabit, allData, calEvents, fetchCalendar, calLoading, calError, googleConnected, addEntry, removeEntry, global, saveGlobal, setSub, sub }) {
   const [newHabitText, setNewHabitText] = useState("");
+  const garminSleep = useGarminSleepByDate();
+  const lastNightSleep = garminSleep?.[todayKey()];
 
   if (sub === "weekplan") return <WeekPlanSec global={global} saveGlobal={saveGlobal} setSub={setSub} />;
 
@@ -80,7 +83,7 @@ export function TodayView({ day, u, toggleHabit, allData, calEvents, fetchCalend
       <div style={S.g2}>
         <Mini label="Pantalla" value={day.screen.total ? day.screen.total + "'" : "—"} color="#f59e0b" />
         <Mini label="Xarxes" value={day.screen.social ? day.screen.social + "'" : "—"} color={parseInt(day.screen.social) > 20 ? "#ef4444" : "#4ade80"} />
-        <Mini label="Son" value={day.sleep.hours ? day.sleep.hours + "h" : "—"} color="#818cf8" />
+        <Mini label="Son" value={lastNightSleep?.hours ? lastNightSleep.hours.toFixed(1) + "h" : "—"} color="#818cf8" />
         <Mini label="Estat" value={day.mood ? MOODS.find(m => m.id === day.mood)?.emoji || "—" : "—"} color="#e5e7eb" />
       </div>
 
