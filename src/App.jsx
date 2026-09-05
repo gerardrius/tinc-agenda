@@ -8,7 +8,7 @@ import { S, COLORS } from "./lib/styles";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
 import { getSession, onAuthStateChange, fetchAll, upsertEntry, signOut } from "./lib/remoteStorage";
 import * as googleAuth from "./lib/googleAuth";
-import { fetchEvents } from "./lib/googleCalendar";
+import { fetchEvents, createEvent } from "./lib/googleCalendar";
 import { useGarminSleepByDate } from "./lib/sleepMapApi";
 import { deriveMatchState, detectConfirmation } from "./lib/matchCycle";
 import { AuthScreen } from "./components/AuthScreen";
@@ -33,7 +33,7 @@ function useDomainScores(global, allData, garminSleep, matchState) {
   const todaysSleepScore = garminSleep?.[todayKey()]?.score;
   const son = todaysSleepScore != null ? Math.round(todaysSleepScore / 10) : 6;
 
-  return { arbitratge, relacions: 6, son, finances: 6 };
+  return { arbitratge, relacions: 6, son, finances: 6, trainingMatchesThisWeek: matchState.trainingMatches || [] };
 }
 
 export default function App() {
@@ -191,6 +191,23 @@ export default function App() {
     setCalLoading(false);
   };
 
+  // Creates a real event on the user's Google Calendar from the Agenda
+  // "tap an empty slot" flow, then refreshes so it shows up immediately.
+  const handleCreateEvent = async ({ summary, location, startISO, endISO, topic }) => {
+    let token = googleAuth.getToken();
+    if (!token) token = await googleAuth.connect();
+    try {
+      await createEvent(token, { summary, location, startISO, endISO, topic, reminderMinutesBefore: [30] });
+    } catch (e) {
+      if (e.code === 401) {
+        googleAuth.disconnect();
+        const freshToken = await googleAuth.connect();
+        await createEvent(freshToken, { summary, location, startISO, endISO, topic, reminderMinutesBefore: [30] });
+      } else throw e;
+    }
+    await fetchCalendar();
+  };
+
   // Auto-sync on open (silent — no popup) whenever the user has ever
   // connected before, plus a periodic re-sync every 15 minutes while the
   // app stays open, so Avui's match state (ctx) and Setmana de Descans
@@ -247,7 +264,7 @@ export default function App() {
           />
         )}
         {tab === "agenda" && (
-          <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} />
+          <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} onCreateEvent={handleCreateEvent} />
         )}
         {tab === "setmana" && <SetmanaView day={day} global={global} allData={allData} garminSleep={garminSleep} domainScores={domainScores} onOpenSheet={setSheet} onOpenFull={setFull} />}
         {tab === "jo" && <JoView day={day} global={global} allData={allData} garminSleep={garminSleep} onOpenFull={setFull} />}

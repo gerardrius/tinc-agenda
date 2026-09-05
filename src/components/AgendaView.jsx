@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { CALENDARS, calendarColor } from "../lib/constants";
+import { CALENDARS, calendarColor, TOPICS, topicById, nextTopic } from "../lib/constants";
 import { fmtDate, fmtTime } from "../lib/utils";
+import { fixtureText, roleLabel } from "../lib/matchCycle";
 import { S, COLORS } from "../lib/styles";
-import { Segmented } from "./ui";
+import { Segmented, Sheet, SheetCloseBtn, TopicPill } from "./ui";
 
 const DAY_START = 7, DAY_END = 23, PX_PER_HOUR = 56;
 const timelineHeight = (DAY_END - DAY_START) * PX_PER_HOUR;
 const hourOf = (iso) => { const d = new Date(iso); return d.getHours() + d.getMinutes() / 60; };
 const isTimed = (e) => e.start?.includes("T");
+const eventColor = (e) => (e.topic ? topicById(e.topic).color : calendarColor(e.title));
 
 // Greedy interval-graph coloring: events that overlap in time share the row,
 // each taking an equal fraction of the width (README "Overlaps").
@@ -28,12 +30,22 @@ function layoutColumns(events) {
   });
 }
 
-function DayTimeline({ events, onSelect, selectedIdx }) {
+function DayTimeline({ events, onSelect, selectedIdx, onCreateSlot }) {
   const timed = events.filter(isTimed);
   const allDay = events.filter((e) => !isTimed(e));
   const laidOut = layoutColumns(timed);
   const nowH = new Date().getHours() + new Date().getMinutes() / 60;
   const showNow = nowH >= DAY_START && nowH <= DAY_END;
+
+  // Tapping empty timeline space opens the create-event sheet at that hour;
+  // tapping an existing event block (a <button>) stops propagation instead.
+  const handleTimelineClick = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const rawHour = DAY_START + y / PX_PER_HOUR;
+    const hour = Math.max(DAY_START, Math.min(DAY_END - 1, Math.round(rawHour * 2) / 2));
+    onCreateSlot(hour);
+  };
 
   return (
     <div>
@@ -42,7 +54,7 @@ function DayTimeline({ events, onSelect, selectedIdx }) {
           {allDay.map((e, i) => <span key={i} style={{ ...S.topicPill, background: COLORS.chipBg, color: COLORS.textSec }}>{e.title}</span>)}
         </div>
       )}
-      <div style={{ position: "relative", height: timelineHeight, marginLeft: 34 }}>
+      <div onClick={handleTimelineClick} style={{ position: "relative", height: timelineHeight, marginLeft: 34, cursor: "pointer" }}>
         {Array.from({ length: DAY_END - DAY_START + 1 }, (_, i) => DAY_START + i).map((h) => (
           <div key={h} style={{ position: "absolute", top: (h - DAY_START) * PX_PER_HOUR, left: 0, right: 0 }}>
             <span style={{ position: "absolute", left: -34, top: -6, width: 30, textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: COLORS.textSec }}>{String(h).padStart(2, "0")}:00</span>
@@ -56,12 +68,12 @@ function DayTimeline({ events, onSelect, selectedIdx }) {
         )}
         {laidOut.map(({ e, start, end, col, cols }, i) => {
           const title = e.title || "Event";
-          const color = calendarColor(e.calendarLabel || title);
+          const color = eventColor(e);
           const top = Math.max(0, (start - DAY_START) * PX_PER_HOUR);
           const h = Math.max(20, (Math.max(end, start + 0.25) - start) * PX_PER_HOUR - 4);
           const widthPct = 100 / cols;
           return (
-            <button key={i} onClick={() => onSelect(events.indexOf(e))} style={{
+            <button key={i} onClick={(ev) => { ev.stopPropagation(); onSelect(events.indexOf(e)); }} style={{
               position: "absolute", top, left: `${col * widthPct}%`, width: `calc(${widthPct}% - 4px)`, height: h,
               background: color + "18", border: `1px solid ${color}`, borderRadius: 8, padding: "7px 9px",
               textAlign: "left", cursor: "pointer", fontFamily: "inherit", overflow: "hidden",
@@ -87,6 +99,8 @@ function WeekGrid({ calEvents, matchState, selDay, setSelDay }) {
         const isToday = i === 0;
         const isMatch = matchDates.includes(dk);
         const dayEvents = (calEvents || []).filter((e) => e.start?.startsWith(dk));
+        const shown = dayEvents.slice(0, 4);
+        const extra = dayEvents.length - shown.length;
         return (
           <button key={dk} onClick={() => setSelDay(i)} style={{
             display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 2px 8px",
@@ -98,12 +112,13 @@ function WeekGrid({ calEvents, matchState, selDay, setSelDay }) {
             <span style={{ fontSize: 10, color: COLORS.textSec, letterSpacing: 0 }}>{d.toLocaleDateString("ca-ES", { weekday: "short" }).slice(0, 3)}</span>
             <span style={{ fontSize: 16, fontWeight: 600, color: isToday ? COLORS.accent : COLORS.text, borderBottom: isToday ? `2px solid ${COLORS.accent}` : "none" }}>{d.getDate()}</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 2, width: "100%", marginTop: 4 }}>
-              {dayEvents.slice(0, 3).map((e, j) => (
+              {shown.map((e, j) => (
                 <div key={j} style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: 99, background: calendarColor(e.title), flexShrink: 0 }} />
+                  <span style={{ width: 5, height: 5, borderRadius: 99, background: eventColor(e), flexShrink: 0 }} />
                   <span style={{ fontSize: 9, color: "#6d6259", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
                 </div>
               ))}
+              {extra > 0 && <span style={{ fontSize: 9, color: COLORS.textMuted }}>+{extra} més</span>}
             </div>
           </button>
         );
@@ -112,10 +127,73 @@ function WeekGrid({ calEvents, matchState, selDay, setSelDay }) {
   );
 }
 
-export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, matchState, googleConnected }) {
+const DURATIONS = [30, 60, 90, 120];
+
+function CreateEventSheet({ slot, date, onClose, onCreate }) {
+  const [title, setTitle] = useState("");
+  const [location, setLocation] = useState("");
+  const [duration, setDuration] = useState(60);
+  const [topic, setTopic] = useState("arbitratge");
+  const [saving, setSaving] = useState(false);
+
+  const startDate = new Date(date);
+  startDate.setHours(Math.floor(slot), (slot % 1) * 60, 0, 0);
+  const endDate = new Date(startDate.getTime() + duration * 60000);
+  const topicObj = topicById(topic);
+
+  const submit = async () => {
+    if (!title.trim() || saving) return;
+    setSaving(true);
+    try {
+      await onCreate({
+        summary: `${topicObj.emoji} ${title.trim()}`,
+        location,
+        startISO: startDate.toISOString(),
+        endISO: endDate.toISOString(),
+        topic,
+      });
+      onClose();
+    } catch (e) {
+      window.alert(e.message || "Error creant l'event.");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontSize: 19, fontWeight: 600 }}>Nou event</div>
+        <SheetCloseBtn onClose={onClose} />
+      </div>
+      <div style={{ fontSize: 12.5, color: COLORS.textSec, marginBottom: 12 }}>
+        {fmtTime(startDate.toISOString())} – {fmtTime(endDate.toISOString())}
+      </div>
+      <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Nom de l'event" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+      <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Lloc (opcional)" value={location} onChange={(e) => setLocation(e.target.value)} />
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        {DURATIONS.map((d) => (
+          <button key={d} onClick={() => setDuration(d)} style={{
+            flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+            border: `1px solid ${duration === d ? COLORS.accent : COLORS.border}`,
+            background: duration === d ? "#fbf2ea" : "#fdfbf9", color: duration === d ? COLORS.accent : COLORS.textSec,
+          }}>{d} min</button>
+        ))}
+      </div>
+      <button onClick={() => setTopic(nextTopic(topic))} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", marginBottom: 14 }}>
+        <TopicPill topic={topicObj} />
+      </button>
+      <button onClick={submit} disabled={!title.trim() || saving} style={{ ...S.pBtn, width: "100%", textAlign: "center", opacity: title.trim() ? 1 : 0.5 }}>
+        {saving ? "Creant…" : "Crear event"}
+      </button>
+    </Sheet>
+  );
+}
+
+export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, matchState, googleConnected, onCreateEvent }) {
   const [agView, setAgView] = useState("day");
   const [selDay, setSelDay] = useState(0);
   const [selectedIdx, setSelectedIdx] = useState(null);
+  const [creatingSlot, setCreatingSlot] = useState(null);
 
   const selDate = new Date(); selDate.setDate(selDate.getDate() + selDay);
   const selDk = selDate.toISOString().split("T")[0];
@@ -156,12 +234,11 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
 
       {calEvents && agView === "day" && (
         <div style={{ marginTop: 14 }}>
-          {dayEvents.length === 0
-            ? <p style={{ ...S.muted, textAlign: "center", marginTop: 30 }}>Cap event {selDay === 0 ? "avui" : "aquest dia"}. Dia lliure.</p>
-            : <DayTimeline events={dayEvents} onSelect={setSelectedIdx} selectedIdx={selectedIdx} />}
+          <DayTimeline events={dayEvents} onSelect={setSelectedIdx} selectedIdx={selectedIdx} onCreateSlot={setCreatingSlot} />
+          {dayEvents.length === 0 && <p style={{ ...S.muted, textAlign: "center", marginTop: -6, marginBottom: 10 }}>Cap event {selDay === 0 ? "avui" : "aquest dia"}. Toca l'horari per afegir-ne un.</p>}
 
           {selectedEvent && (() => {
-            const color = calendarColor(selectedEvent.title);
+            const color = eventColor(selectedEvent);
             return (
               <div style={{ ...S.evCard, borderLeft: `3px solid ${color}`, marginTop: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>{selectedEvent.title}</div>
@@ -178,7 +255,7 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
           <WeekGrid calEvents={calEvents} matchState={matchState} selDay={selDay} setSelDay={(i) => { setSelDay(i); setAgView("day"); }} />
           {thisWeekMatch && (
             <div style={{ marginTop: 12, padding: "10px 14px", background: COLORS.matchStripBg, border: `1px solid ${COLORS.matchStripBorder}`, borderRadius: 12, fontSize: 12.5, color: COLORS.ref }}>
-              ⚽ {thisWeekMatch.role === "quart" ? "4t Oficial" : "Partit A"} · {fmtDate(new Date(thisWeekMatch.start))} · {thisWeekMatch.title.replace(/^(Partit A|4t Oficial)\s*[-:–]?\s*/i, "")}
+              ⚽ {roleLabel(thisWeekMatch.title)} · {fmtDate(new Date(thisWeekMatch.start))} · {fixtureText(thisWeekMatch.title)}
             </div>
           )}
           <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
@@ -188,8 +265,18 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
                 <span style={{ fontSize: 11.5, color: COLORS.textSec }}>{c.label}</span>
               </div>
             ))}
+            {TOPICS.map((t) => (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 9, height: 9, borderRadius: 99, background: t.color, display: "inline-block" }} />
+                <span style={{ fontSize: 11.5, color: COLORS.textSec }}>{t.emoji} {t.label}</span>
+              </div>
+            ))}
           </div>
         </div>
+      )}
+
+      {creatingSlot != null && (
+        <CreateEventSheet slot={creatingSlot} date={selDate} onClose={() => setCreatingSlot(null)} onCreate={onCreateEvent} />
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { RITUAL_BANNERS, PREP_CHECKLISTS, topicById, nextTopic } from "../lib/constants";
 import { todayKey, fmtDate, fmtTime, uid, computeStreak } from "../lib/utils";
 import { activeHabits } from "../lib/taskRules";
+import { fixtureText, roleLabel } from "../lib/matchCycle";
 import { S, COLORS } from "../lib/styles";
 import { Card, Lbl, Checkbox, TopicPill, ProgressArc } from "./ui";
 
@@ -43,12 +44,6 @@ function daysUntil(startISO) {
   const start = new Date(startISO); start.setHours(0, 0, 0, 0);
   const now = new Date(); now.setHours(0, 0, 0, 0);
   return Math.round((start - now) / 86400000);
-}
-
-// Fixture text from a confirmed event title, stripping the role prefix
-// ("Partit A - CF Igualada — UE Vilassar" -> "CF Igualada — UE Vilassar").
-function fixtureText(title) {
-  return title.replace(/^(Partit A|4t Oficial)\s*[-:–]?\s*/i, "").trim() || title;
 }
 
 export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, persist, saveGlobal, matchState, calEvents, bannerToShow, onOpenRitual, onDismissBanner, onOpenFull, onOpenSheet }) {
@@ -189,7 +184,7 @@ export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, p
             </div>
             <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 19, fontWeight: 600, marginBottom: 4 }}>{role === "quart" ? "4t Oficial — TBD" : "Partit A — TBD"}</div>
+                <div style={{ fontSize: 19, fontWeight: 600, marginBottom: 4 }}>{roleLabel(info.title)} — TBD</div>
                 <div style={{ fontSize: 12.5, color: COLORS.textSec }}>Seu i rival pendents de confirmació</div>
                 <div style={{ fontSize: 12.5, color: COLORS.textSec }}>Cap de setmana del {weekendRange(info.start)} · dins de {daysOut} dies</div>
               </div>
@@ -207,7 +202,7 @@ export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, p
         <div style={S.heroCard}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <span style={S.heroEyebrow}>{ctx === "quart" ? "Preparació focalitzada" : "Setmana de partit"}</span>
-            <span style={{ fontSize: 11.5, color: COLORS.textSec }}>{ctx === "quart" ? "4t oficial" : "Partit A · àrbitre principal"}</span>
+            <span style={{ fontSize: 11.5, color: COLORS.textSec }}>{ctx === "quart" ? roleLabel(info.title) : `${roleLabel(info.title)} · àrbitre principal`}</span>
           </div>
           <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
             <div style={{ flex: 1 }}>
@@ -281,16 +276,27 @@ export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, p
               <span style={{ fontSize: 12.5, color: COLORS.textSec }}>Si hi ha temps · {rest.length} tasques</span>
               <span style={{ color: COLORS.textSec, transition: "transform .2s", transform: showMore ? "rotate(90deg)" : "none" }}>›</span>
             </button>
-            {showMore && rest.map((t) => (
-              <div key={t.id} style={{ ...S.checkRow, borderTop: `1px solid ${COLORS.borderSoft}` }}>
-                <Checkbox checked={t.done} onChange={() => setTaskField(t.id, "done", !t.done)} size={18} />
-                <input style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 13, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}
-                  value={t.label} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova tasca" />
-                <button onClick={() => removeTask(t.id)} style={S.delBtn}>×</button>
-              </div>
-            ))}
+            {showMore && rest.map((t) => {
+              const restTopic = topicById(t.topic);
+              return (
+                <div key={t.id} style={{ ...S.checkRow, borderTop: `1px solid ${COLORS.borderSoft}` }}>
+                  <Checkbox checked={t.done} onChange={() => setTaskField(t.id, "done", !t.done)} size={18} />
+                  <input style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 13, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}
+                    value={t.label} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova tasca" />
+                  <button onClick={() => setTaskField(t.id, "topic", nextTopic(t.topic))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}><TopicPill topic={restTopic} /></button>
+                  <button onClick={() => removeTask(t.id)} style={S.delBtn}>×</button>
+                </div>
+              );
+            })}
           </>
         )}
+
+        <button
+          onClick={() => { u("tasks", null, [...tasks, { id: uid(), label: "", topic: "arbitratge", hint: "", done: false }]); setNewTaskFocused(true); }}
+          style={{ width: "100%", minHeight: 40, marginTop: 8, border: "1px dashed #ded6cd", background: "none", borderRadius: 8, color: COLORS.textSec, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
+        >
+          ➕ Afegir tasca
+        </button>
       </Card>
 
       {(ctx === "partitA" || ctx === "quart") && (

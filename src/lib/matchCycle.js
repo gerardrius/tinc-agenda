@@ -1,16 +1,26 @@
 // Derives Avui's match context (`ctx`) from the real Google Calendar feed,
 // per the README's "Match Calendar System": the RFEF publishes a placeholder
-// two weeks out ("Partit A - TBD" / "4t Oficial - TBD"), then updates the
-// same-titled event with the real fixture on Thursday (Partit A) or the
-// Monday of match week (4t Oficial).
+// two weeks out, then updates the same-titled event with the real fixture on
+// Thursday (Partit A) or the Monday of match week (Partit 4t).
 //
 // This is a naming-convention parse of event titles, not a real RFEF
-// integration — it expects your calendar events to be titled starting with
-// "Partit A" or "4t Oficial", optionally followed by "- TBD" while pending
-// or "- <opponent>" once confirmed.
+// integration. Per your real calendar naming:
+// - "Partit A" — the serious main-referee assignment. Drives full prep mode.
+// - "Partit 4t" — the serious fourth-official assignment. Drives focused prep mode.
+// - "Partit B" / "Partit C" — lower-stakes training matches. These coexist
+//   with rest weeks (you can have a Partit B *and* be in "Setmana de
+//   descans" at the same time) — they never change `ctx`, but are tracked
+//   separately (`trainingMatches`) so Arbitratge's activity/history isn't
+//   blind to them.
+// Either serious role's placeholder/confirmed distinction still uses a
+// "TBD" marker in the title while pending.
 
-function findRoleEvent(calEvents, roleLabel) {
-  const matches = (calEvents || []).filter((e) => e.title?.toLowerCase().startsWith(roleLabel.toLowerCase()));
+const PARTIT_A_RE = /^partit\s*a\b/i;
+const PARTIT_QUART_RE = /^(partit\s*4t\b|4t\s*oficial)/i;
+const TRAINING_RE = /^partit\s*[bc]\b/i;
+
+function findFirst(calEvents, re) {
+  const matches = (calEvents || []).filter((e) => re.test(e.title || ""));
   return matches.sort((a, b) => a.start.localeCompare(b.start))[0] || null;
 }
 
@@ -26,17 +36,21 @@ function parseRole(ev, role) {
   };
 }
 
-// Returns { ctx, partitA, quart } — ctx is one of 'rest' | 'tbd' | 'partitA' | 'quart'.
+// Returns { ctx, partitA, quart, trainingMatches } — ctx is one of
+// 'rest' | 'tbd' | 'partitA' | 'quart'.
 export function deriveMatchState(calEvents) {
-  const partitA = parseRole(findRoleEvent(calEvents, "Partit A"), "partitA");
-  const quart = parseRole(findRoleEvent(calEvents, "4t Oficial"), "quart");
+  const partitA = parseRole(findFirst(calEvents, PARTIT_A_RE), "partitA");
+  const quart = parseRole(findFirst(calEvents, PARTIT_QUART_RE), "quart");
+  const trainingMatches = (calEvents || [])
+    .filter((e) => TRAINING_RE.test(e.title || ""))
+    .map((e) => ({ title: e.title, venue: e.location || "", start: e.start, end: e.end }));
 
   let ctx = "rest";
   if (partitA && !partitA.isTBD) ctx = "partitA";
   else if (quart && !quart.isTBD) ctx = "quart";
   else if (partitA || quart) ctx = "tbd";
 
-  return { ctx, partitA, quart };
+  return { ctx, partitA, quart, trainingMatches };
 }
 
 // True when a role flips from a TBD placeholder to a confirmed fixture
@@ -48,4 +62,19 @@ export function detectConfirmation(prevState, nextState) {
     if (prev?.isTBD && next && !next.isTBD) return next;
   }
   return null;
+}
+
+// Fixture text from a confirmed event title, stripping the role prefix
+// ("Partit A - CF Igualada — UE Vilassar" -> "CF Igualada — UE Vilassar",
+// "Partit B: FCB - Huesca" -> "FCB - Huesca").
+export function fixtureText(title) {
+  return (title || "").replace(/^(partit\s*[a-z0-9]*|4t\s*oficial)\s*[-:–]?\s*/i, "").trim() || title;
+}
+
+// Human label for the role prefix actually used in the title, so the UI
+// doesn't hardcode "Partit A" when the real event might read "Partit A" with
+// different casing/spacing.
+export function roleLabel(title) {
+  const m = (title || "").match(/^(partit\s*[a-z0-9]*|4t\s*oficial)/i);
+  return m ? m[0].trim() : title;
 }
