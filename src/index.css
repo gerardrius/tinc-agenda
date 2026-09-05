@@ -38,3 +38,37 @@ input, textarea, button {
     padding-bottom: calc(2px + env(safe-area-inset-bottom));
   }
 }
+
+/* Animation keyframes — referenced by name via src/lib/styles.js's ANIM
+   shorthands (e.g. style={{ animation: ANIM.rise }}). Kept here rather than
+   injected from JS since keyframes are global CSS constructs. */
+@keyframes pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes settle {
+  0% { opacity: 0; transform: translateY(14px) scale(.97); filter: blur(6px); }
+  60% { filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+@keyframes sheetup {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes slidein {
+  from { opacity: 0; transform: translateX(22px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes fadein {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pulsering {
+  0% { transform: scale(.9); opacity: .55; }
+  100% { transform: scale(1.5); opacity: 0; }
+}

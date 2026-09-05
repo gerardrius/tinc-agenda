@@ -3,3 +3,10 @@ dist
 .env
 .env.local
 .vercel
+
+# iOS (Xcode/Capacitor)
+ios/App/Pods
+ios/App/build
+ios/App/DerivedData
+ios/**/xcuserdata
+ios/**/*.xcuserstate

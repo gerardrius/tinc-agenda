@@ -1,69 +1,15 @@
 import { useState } from "react";
-import { MOODS } from "../lib/constants";
+import { RITUAL_BANNERS, PREP_CHECKLISTS, topicById, nextTopic } from "../lib/constants";
 import { todayKey, fmtDate, fmtTime, uid, computeStreak } from "../lib/utils";
-import { suggestHabits, weekStartKey } from "../lib/habitSuggest";
+import { activeHabits } from "../lib/taskRules";
 import { S, COLORS } from "../lib/styles";
-import { Card, Lbl } from "./ui";
-import { WeekPlanSec } from "./WeekPlanSec";
-import { ContributionGrid } from "./ContributionGrid";
+import { Card, Lbl, Checkbox, TopicPill, ProgressArc } from "./ui";
 
-const TOPICS = [
-  { id: "ref", emoji: "⚽", label: "Arbitratge", color: COLORS.ref },
-  { id: "rel", emoji: "💛", label: "Relacions", color: COLORS.accent },
-  { id: "son", emoji: "💤", label: "Son", color: COLORS.good },
-  { id: "fin", emoji: "💰", label: "Finances", color: COLORS.warn },
-  { id: "feina", emoji: "💼", label: "Feina", color: COLORS.textSec },
-  { id: "salut", emoji: "🏃", label: "Salut", color: COLORS.good },
-];
-const nextTopic = (id) => TOPICS[(TOPICS.findIndex(t => t.id === id) + 1) % TOPICS.length].id;
-
-const PREP_ITEMS = {
-  partitA: [
-    { id: "vid_local", emoji: "📹", text: "Vídeo equip local" },
-    { id: "vid_visit", emoji: "📹", text: "Vídeo equip visitant" },
-    { id: "perfils", emoji: "👥", text: "Perfils jugadors clau" },
-    { id: "activacio", emoji: "🏃", text: "Sessió d'activació" },
-    { id: "tapering", emoji: "😴", text: "Tapering marcat" },
-    { id: "criteris", emoji: "📋", text: "Criteris arbitrals revisats" },
-  ],
-  quart: [
-    { id: "briefing", emoji: "📋", text: "Briefing protocol" },
-    { id: "activacio", emoji: "🏃", text: "Activació" },
-    { id: "son_prio", emoji: "😴", text: "Son prioritari" },
-  ],
-};
-
-function Arc({ size = 78, stroke = 6, pct, color, track = COLORS.track, children }) {
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
+function QuickPill({ emoji, label, done, onClick }) {
   return (
-    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
-          strokeDasharray={`${c * (pct / 10)} ${c}`} style={{ transition: "stroke-dasharray .5s ease" }} />
-      </svg>
-      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>{children}</div>
-    </div>
-  );
-}
-
-function QuickPill({ emoji, label, done, onClick, disabled }) {
-  return (
-    <button onClick={disabled ? undefined : onClick} style={{ ...S.quickPill, ...(done ? S.quickPillDone : {}), opacity: disabled ? 0.5 : 1, cursor: disabled ? "default" : "pointer" }}>
+    <button onClick={onClick} style={{ ...S.quickPill, ...(done ? S.quickPillDone : {}) }}>
       <span>{emoji}</span><span>{label}{done ? " ✓" : ""}</span>
     </button>
-  );
-}
-
-// "Son d'ahir" has no manual entry (data is automatic from Garmin), so while
-// it's waiting on that sync it renders as an inert, unlabeled pill rather
-// than a fake "done" state.
-function PendingPill({ emoji, label }) {
-  return (
-    <span style={{ ...S.quickPill, opacity: 0.5, cursor: "default" }}>
-      <span>{emoji}</span><span>{label}</span>
-    </span>
   );
 }
 
@@ -79,164 +25,205 @@ function NudgeCard({ emoji, color, text, actionLabel, onAction }) {
   );
 }
 
-export function TodayView({ day, u, toggleHabit, allData, calEvents, addEntry, removeEntry, global, saveGlobal, setSub, sub, setTab, garminSleep }) {
+function findMatchRecord(global, role, start) {
+  return (global.matches || []).find((m) => m.role === role && m.start === start) || null;
+}
+
+// Weekend date range (Sat–Sun) implied by a TBD placeholder's start date,
+// for the "Cap de setmana del D–D" line.
+function weekendRange(startISO) {
+  const d = new Date(startISO);
+  const dow = d.getDay(); // 0 Sun..6 Sat
+  const sat = new Date(d); sat.setDate(d.getDate() + ((6 - dow + 7) % 7));
+  const sun = new Date(sat); sun.setDate(sat.getDate() + 1);
+  return `${sat.getDate()}–${sun.getDate()}`;
+}
+
+function daysUntil(startISO) {
+  const start = new Date(startISO); start.setHours(0, 0, 0, 0);
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  return Math.round((start - now) / 86400000);
+}
+
+// Fixture text from a confirmed event title, stripping the role prefix
+// ("Partit A - CF Igualada — UE Vilassar" -> "CF Igualada — UE Vilassar").
+function fixtureText(title) {
+  return title.replace(/^(Partit A|4t Oficial)\s*[-:–]?\s*/i, "").trim() || title;
+}
+
+export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, persist, saveGlobal, matchState, calEvents, bannerToShow, onOpenRitual, onDismissBanner, onOpenFull, onOpenSheet }) {
   const [newTaskFocused, setNewTaskFocused] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [overflowId, setOverflowId] = useState(null);
   const [newHabitText, setNewHabitText] = useState("");
-  const lastNightSleep = garminSleep?.[todayKey()];
+  const [pickingMood, setPickingMood] = useState(false);
 
-  if (sub === "weekplan") return <WeekPlanSec global={global} saveGlobal={saveGlobal} setSub={setSub} />;
+  const { ctx } = matchState;
+  const info = ctx === "quart" ? matchState.quart : matchState.partitA || matchState.quart;
+  const role = info?.role;
+  const daysOut = info ? daysUntil(info.start) : null;
 
-  const wk = weekStartKey();
-  const weekPlan = (global.weeklyPlans || {})[wk];
-  const isSunday = new Date().getDay() === 0;
-  const matches = global.matches || [];
-  const upcoming = matches.filter(m => m.date >= todayKey()).sort((a, b) => a.date.localeCompare(b.date))[0];
-  const daysOut = upcoming ? Math.round((new Date(upcoming.date) - new Date(todayKey())) / 86400000) : null;
+  const prepDefs = PREP_CHECKLISTS[role === "quart" ? "quart" : "partitA"];
+  const record = info ? findMatchRecord(global, role, info.start) : null;
+  const prep = record?.prep || {};
+  const prepDone = prepDefs.filter((it) => prep[it.id]).length;
 
-  // `ctx` stands in for the design spec's RFEF two-week auto-detection (Monday
-  // placeholder -> Thursday confirmation) which needs real calendar integration
-  // we don't have yet. Here it's just derived from whatever's in global.matches.
-  let ctx = "rest";
-  if (upcoming && daysOut <= 14) {
-    if (!upcoming.time) ctx = "tbd";
-    else if (/4t|quart/i.test(upcoming.role || "")) ctx = "quart";
-    else ctx = "partitA";
-  }
-
-  const prepKey = ctx === "quart" ? "quart" : "partitA";
-  const prepDefs = PREP_ITEMS[prepKey];
-  const prep = upcoming?.prep || {};
-  const prepDone = prepDefs.filter(it => prep[it.id]).length;
   const togglePrep = (id) => {
-    if (!upcoming) return;
+    if (!info) return;
     const nextPrep = { ...prep, [id]: !prep[id] };
-    saveGlobal({ ...global, matches: matches.map(m => m.id === upcoming.id ? { ...m, prep: nextPrep } : m) });
+    const others = (global.matches || []).filter((m) => !(m.role === role && m.start === info.start));
+    saveGlobal({ ...global, matches: [...others, { id: record?.id || uid(), role, start: info.start, venue: info.venue, title: info.title, prep: nextPrep }] });
   };
 
-  const habits = suggestHabits({ weekPlan, hasMatchToday: Boolean(matches.find(m => m.date === todayKey())) });
-  const customHabits = day.customHabits || [];
-  const allHabits = [...habits, ...customHabits.map(h => ({ id: h.id, text: h.text }))];
+  const habits = activeHabits({ hasMatchWithin7Days: Boolean(info && daysOut <= 7), customHabits: day.customHabits || [] });
 
-  const reminders = day.reminders || [];
-  const priorities = reminders.slice(0, 3);
-  const rest = reminders.slice(3);
+  const tasks = day.tasks || [];
+  const priorities = tasks.slice(0, 3);
+  const rest = tasks.slice(3);
+  const addTask = () => { u("tasks", null, [...tasks, { id: uid(), label: "", topic: "arbitratge", hint: "", done: false }]); setNewTaskFocused(true); u("qa", "tasca", true); };
+  const setTaskField = (id, field, val) => u("tasks", null, tasks.map((t) => (t.id === id ? { ...t, [field]: val } : t)));
+  const removeTask = (id) => u("tasks", null, tasks.filter((t) => t.id !== id));
 
-  const addTask = () => { addEntry("reminders", { text: "", done: false, topic: null }); setNewTaskFocused(true); };
-  const setReminderField = (id, field, val) => { const list = reminders.map(r => r.id === id ? { ...r, [field]: val } : r); u("reminders", null, list); };
+  const lastNightSleep = garminSleep?.[todayKey()];
+  const garminMissing = !lastNightSleep;
+  const qa = day.qa || {};
 
-  const socialLast4 = Object.entries(allData).filter(([dk]) => { const d = new Date(dk); return (new Date(todayKey()) - d) / 86400000 <= 4; }).reduce((n, [, d]) => n + (d.social?.length || 0), 0);
+  const logExpense = () => {
+    const amount = window.prompt("Import de la despesa (€)");
+    if (!amount) return;
+    const category = window.prompt("Categoria") || "Altres";
+    u("expenses", null, [...(day.expenses || []), { id: uid(), amount: parseFloat(amount) || 0, category }]);
+    u("qa", "expense", true);
+  };
 
-  const sleepDates = Object.keys(garminSleep || {}).filter(dk => dk <= todayKey()).sort().slice(-7);
-  const avgSleepH = sleepDates.length ? sleepDates.reduce((s, dk) => s + (garminSleep[dk].hours || 0), 0) / sleepDates.length : null;
+  const logSocial = () => {
+    const who = window.prompt("Amb qui?");
+    if (!who) return;
+    u("social", null, [...(day.social || []), { id: uid(), who }]);
+    u("qa", "social", true);
+  };
 
-  const socialMin = parseInt(day.screen?.social) || 0;
+  const setMood = (n) => { u("mood", null, n); u("qa", "mood", true); setPickingMood(false); };
 
+  // Nudges — real where the data exists, sample copy otherwise per state
+  // (README nudge copy tables are per-ctx sample copy to wire against real
+  // sources as they land, e.g. social-log recency, Garmin weekly average).
   const nudges = [];
-  if (socialMin > 20) nudges.push({ emoji: "📵", color: COLORS.warn, text: `Has gastat ${socialMin} min en xarxes avui. Intenta baixar de 20.`, actionLabel: "Veure vida", onAction: () => setTab("life") });
-  if (avgSleepH != null && avgSleepH < 6.5) nudges.push({ emoji: "😴", color: COLORS.alert, text: `Has dormit de mitjana ${avgSleepH.toFixed(1)}h aquesta setmana. Rendiment en risc.`, actionLabel: "Veure son", onAction: () => setTab("life") });
-  if ((ctx === "partitA" || ctx === "quart") && daysOut <= 3 && prepDone < prepDefs.length) nudges.push({ emoji: "⚽", color: COLORS.ref, text: `Falten ${prepDefs.length - prepDone} punts de preparació i el partit és d'aquí ${daysOut} dies.`, actionLabel: "Veure partit", onAction: () => setTab("ref") });
-  if (socialLast4 === 0) nudges.push({ emoji: "👥", color: COLORS.accent, text: "Fa dies que no registres cap activitat social. Tens plans aviat?", actionLabel: "Obrir vida", onAction: () => setTab("life") });
+  const socialDays = (day.social || []).length ? 0 : 4;
+  if (ctx === "rest") {
+    nudges.push({ emoji: "💛", color: COLORS.accent, text: `Fa ${socialDays} dies sense veure algú proper. Agenda alguna cosa.`, actionLabel: "Obrir agenda", onAction: () => onOpenSheet("relacions") });
+  } else if (ctx === "tbd") {
+    nudges.push({ emoji: "💤", color: COLORS.good, text: `Tens cita dins de ${daysOut} dies. Comença a pujar el son des d'ara.`, actionLabel: "Veure son", onAction: () => onOpenFull("son") });
+  } else if (ctx === "partitA") {
+    if (prepDone < prepDefs.length && daysOut <= 3) nudges.push({ emoji: "⚽", color: COLORS.ref, text: `Fa dies que no fas vídeo-anàlisi. El proper partit és d'aquí ${daysOut} dies.`, actionLabel: "Registrar sessió", onAction: () => onOpenSheet("arbitratge") });
+  } else if (ctx === "quart") {
+    if (!prep.briefing) nudges.push({ emoji: "📋", color: COLORS.ref, text: "Briefing de protocol pendent.", actionLabel: "Obrir briefing", onAction: () => onOpenSheet("arbitratge") });
+  }
 
-  const upcomingEvents = (calEvents || []).filter(e => e.start >= new Date().toISOString()).sort((a, b) => a.start.localeCompare(b.start)).slice(0, 3);
+  const upcomingEvents = (calEvents || []).filter((e) => e.start >= new Date().toISOString()).sort((a, b) => a.start.localeCompare(b.start)).slice(0, 3);
 
   const addCustomHabit = () => {
     if (!newHabitText.trim()) return;
-    u("customHabits", null, [...customHabits, { id: uid(), text: newHabitText.trim() }]);
+    u("customHabits", null, [...(day.customHabits || []), { id: uid(), emoji: "✦", label: newHabitText.trim(), topic: "salut" }]);
     setNewHabitText("");
   };
-  const removeCustomHabit = (id) => u("customHabits", null, customHabits.filter(h => h.id !== id));
+  const removeCustomHabit = (id) => u("customHabits", null, (day.customHabits || []).filter((h) => h.id !== id));
+
+  const dateLine = ctx === "rest" ? "setmana tranquil·la" : ctx === "tbd" ? "cita confirmada per la RFEF" : `${daysOut} dies per al partit`;
 
   return (
     <div>
-      {!weekPlan && (
-        <button onClick={() => setSub("weekplan")} style={{ ...S.navC, alignItems: "center" }}>
-          <span style={{ fontSize: 18 }}>🗓️</span>
+      <div style={{ ...S.dateLabel, marginBottom: 10, textTransform: "capitalize" }}>{fmtDate(new Date())} · {dateLine}</div>
+
+      {bannerToShow && (
+        <div style={{ ...S.ritualBanner, borderLeft: `3px solid ${RITUAL_BANNERS[bannerToShow].color}` }}>
+          <span style={{ fontSize: 19 }}>{RITUAL_BANNERS[bannerToShow].emoji}</span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600 }}>{isSunday ? "Toca planificar la setmana" : "Encara no has planificat aquesta setmana"}</div>
-            <div style={{ fontSize: 11, color: COLORS.textSec }}>Defineix objectius per rebre hàbits suggerits</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{RITUAL_BANNERS[bannerToShow].title}</div>
           </div>
-          <span style={{ color: COLORS.textFaint }}>→</span>
-        </button>
+          <button onClick={() => onOpenRitual(bannerToShow)} style={{ ...S.ritualBannerAction, background: RITUAL_BANNERS[bannerToShow].color }}>{RITUAL_BANNERS[bannerToShow].action}</button>
+          <button onClick={() => onDismissBanner(bannerToShow)} style={S.ritualBannerDismiss}>×</button>
+        </div>
       )}
 
       {/* Quick actions */}
       <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "2px 2px 10px", width: "max-content", maxWidth: "100%" }}>
-        <QuickPill emoji="➕" label="Tasca" onClick={addTask} />
-        {!day.mood && <QuickPill emoji="😄" label="Registrar ànim" onClick={() => u("mood", null, "ok")} />}
-        {!lastNightSleep && <PendingPill emoji="💤" label="Son d'ahir" />}
-        <PendingPill emoji="💰" label="Despesa" />
-        <QuickPill emoji="👥" label="Activitat social" onClick={() => setTab("life")} />
+        <QuickPill emoji="➕" label="Tasca" done={qa.tasca} onClick={addTask} />
+        {!day.mood && <QuickPill emoji="😄" label="Registrar ànim" onClick={() => setPickingMood(!pickingMood)} />}
+        {garminMissing && <QuickPill emoji="💤" label="Son d'ahir" onClick={() => onOpenFull("son")} />}
+        <QuickPill emoji="💰" label="Despesa" done={qa.expense} onClick={logExpense} />
+        <QuickPill emoji="👥" label="Activitat social" done={qa.social} onClick={logSocial} />
       </div>
+      {pickingMood && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {["😔", "🙁", "😐", "🙂", "😄"].map((e, i) => (
+            <button key={e} onClick={() => setMood(i + 1)} style={{ width: 40, height: 40, borderRadius: 10, border: `1.5px solid ${COLORS.border}`, background: "#fdfbf9", fontSize: 18, cursor: "pointer" }}>{e}</button>
+          ))}
+        </div>
+      )}
 
       {/* Hero */}
       {ctx === "rest" && (
         <div style={S.heroCard}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <span style={S.heroEyebrow}>Setmana de descans</span>
-            <span style={{ fontSize: 11.5, color: COLORS.textSec }}>Cap partit en els propers dies</span>
+            <span style={{ fontSize: 11.5, color: COLORS.textSec }}>Cap partit en 2 caps de setmana</span>
           </div>
           <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-            <Arc pct={7} color={COLORS.accent}>
-              <div style={{ fontSize: 23, fontWeight: 600, color: COLORS.text }}>7</div>
-              <div style={{ fontSize: 9.5, color: COLORS.textSec }}>equilibri</div>
-            </Arc>
+            <ProgressArc size={86} strokeWidth={7} progress={0.7} color={COLORS.accent} big="7" small="equilibri" />
             <div>
-              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Setmana per recuperar i posar-te al dia</div>
-              <div style={{ fontSize: 12.5, color: COLORS.textSec, lineHeight: 1.45 }}>Aprofita per dormir bé, veure gent i tancar temes pendents.</div>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Aquesta setmana toca relacions</div>
+              <div style={{ fontSize: 12.5, color: COLORS.textSec, lineHeight: 1.45 }}>És el domini més fluix. Un sopar amb algú proper i una trucada als amics ho arreglen.</div>
             </div>
           </div>
         </div>
       )}
 
-      {ctx === "tbd" && (
+      {ctx === "tbd" && info && (
         <>
           <div style={S.heroCard}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <span style={{ ...S.heroEyebrow, display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: 99, background: COLORS.ref, display: "inline-block" }} />Consciència suau</span>
-              <span style={{ fontSize: 11.5, color: COLORS.textSec }}>Rol assignat</span>
+              <span style={{ fontSize: 11.5, color: COLORS.textSec }}>Rol assignat · RFEF</span>
             </div>
             <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 19, fontWeight: 600, marginBottom: 4 }}>{upcoming.teams} — TBD</div>
-                <div style={{ fontSize: 12.5, color: COLORS.textSec }}>{upcoming.competition || "Detalls pendents de confirmació"}</div>
-                <div style={{ fontSize: 12.5, color: COLORS.textSec }}>D'aquí {daysOut} dies</div>
+                <div style={{ fontSize: 19, fontWeight: 600, marginBottom: 4 }}>{role === "quart" ? "4t Oficial — TBD" : "Partit A — TBD"}</div>
+                <div style={{ fontSize: 12.5, color: COLORS.textSec }}>Seu i rival pendents de confirmació</div>
+                <div style={{ fontSize: 12.5, color: COLORS.textSec }}>Cap de setmana del {weekendRange(info.start)} · dins de {daysOut} dies</div>
               </div>
-              <Arc pct={4} color="#c6d0f0"><div style={{ fontSize: 20, fontWeight: 600 }}>{daysOut}</div><div style={{ fontSize: 9.5, color: COLORS.textSec }}>dies</div></Arc>
+              <ProgressArc size={78} strokeWidth={6} progress={0.35} color={COLORS.matchMuted} big={String(daysOut)} small="dies" />
             </div>
+            <div style={S.matchStrip}>Mode descans prioritari · el son puja a prioritat 1</div>
           </div>
-          <div style={{ padding: "10px 16px", background: "#f6f8fe", border: "1px solid #e8ecf9", borderRadius: 14, marginBottom: 9, fontSize: 12, color: "#5a6a9a" }}>Mode descans prioritari · el son puja a prioritat 1</div>
+          <div style={{ border: "1px dashed #cfd8f2", background: COLORS.matchStripBg, borderRadius: 14, padding: 14, marginBottom: 9 }}>
+            <div style={{ fontSize: 12.5, color: COLORS.matchStripText }}>Els detalls del partit arriben dijous. Fins llavors: dormir i recuperar.</div>
+          </div>
         </>
       )}
 
-      {(ctx === "partitA" || ctx === "quart") && (
+      {(ctx === "partitA" || ctx === "quart") && info && (
         <div style={S.heroCard}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <span style={S.heroEyebrow}>{ctx === "quart" ? "Preparació focalitzada" : "Setmana de partit"}</span>
-            <span style={{ fontSize: 11.5, color: COLORS.textSec }}>{upcoming.role || (ctx === "quart" ? "4t oficial" : "àrbitre principal")}</span>
+            <span style={{ fontSize: 11.5, color: COLORS.textSec }}>{ctx === "quart" ? "4t oficial" : "Partit A · àrbitre principal"}</span>
           </div>
-          <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 19, fontWeight: 600, marginBottom: 4 }}>{upcoming.teams}</div>
-              {upcoming.competition && <div style={{ fontSize: 12.5, color: COLORS.textSec }}>{upcoming.competition}</div>}
-              <div style={{ fontSize: 12.5, color: COLORS.textSec, textTransform: "capitalize" }}>{fmtDate(new Date(upcoming.date + "T12:00"))} · {upcoming.time}</div>
+              <div style={{ fontSize: 19, fontWeight: 600, marginBottom: 4 }}>{fixtureText(info.title)}</div>
+              {info.venue && <div style={{ fontSize: 12.5, color: COLORS.textSec }}>{info.venue}</div>}
+              <div style={{ fontSize: 12.5, color: COLORS.textSec, textTransform: "capitalize" }}>{fmtDate(new Date(info.start))} · {fmtTime(info.start)}</div>
             </div>
-            <Arc pct={(prepDone / prepDefs.length) * 10} color={COLORS.ref}>
-              <div style={{ fontSize: 20, fontWeight: 600 }}>{prepDone}/{prepDefs.length}</div>
-              <div style={{ fontSize: 9.5, color: COLORS.textSec }}>prep</div>
-            </Arc>
+            <ProgressArc size={78} strokeWidth={6} progress={prepDefs.length ? prepDone / prepDefs.length : 0} color={COLORS.ref} big={`${prepDone}/${prepDefs.length}`} small="prep" />
           </div>
           {prepDone === prepDefs.length
-            ? <div style={{ margin: "0 -14px -13px", padding: "10px 16px", background: "#f2fbf7", borderTop: "1px solid #e0f2ea", fontSize: 12, color: "#4f8f74" }}>Preparació completa. Descansa.</div>
-            : <div style={{ margin: "0 -14px -13px", padding: "10px 16px", background: "#f6f8fe", borderTop: "1px solid #e8ecf9", fontSize: 12, color: "#5a6a9a" }}>Falten {prepDefs.length - prepDone} punts · {daysOut} dies pel xiulet inicial</div>}
+            ? <div style={{ ...S.matchStrip, ...S.matchStripDone }}>Preparació completa. Descansa.</div>
+            : <div style={S.matchStrip}>Falten {prepDefs.length - prepDone} punts · {daysOut} dies pel xiulet inicial</div>}
         </div>
       )}
 
-      {/* Nudges */}
       {nudges.slice(0, 3).map((n, i) => <NudgeCard key={i} {...n} />)}
 
-      {/* Preparation checklist */}
       {(ctx === "partitA" || ctx === "quart") && (
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
@@ -247,9 +234,10 @@ export function TodayView({ day, u, toggleHabit, allData, calEvents, addEntry, r
             const done = Boolean(prep[it.id]);
             return (
               <div key={it.id} style={i === 0 ? S.checkRowFirst : S.checkRow}>
-                <button onClick={() => togglePrep(it.id)} style={{ ...S.chk, border: `1.5px solid ${done ? COLORS.ref : "#ded6cd"}`, background: done ? COLORS.ref : "transparent", color: "#fff", cursor: "pointer" }}>{done ? "✓" : ""}</button>
+                <Checkbox checked={done} onChange={() => togglePrep(it.id)} color={COLORS.ref} />
                 <span style={{ fontSize: 15 }}>{it.emoji}</span>
-                <span style={{ flex: 1, fontSize: 14.5, color: done ? COLORS.textFaint : COLORS.text, textDecoration: done ? "line-through" : "none" }}>{it.text}</span>
+                <span style={{ flex: 1, fontSize: 14.5, color: done ? COLORS.textFaint : COLORS.text, textDecoration: done ? "line-through" : "none" }}>{it.label}</span>
+                {it.hint && <span style={{ fontSize: 11, color: COLORS.textFaint }}>{it.hint}</span>}
               </div>
             );
           })}
@@ -260,25 +248,28 @@ export function TodayView({ day, u, toggleHabit, allData, calEvents, addEntry, r
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
           <div style={{ fontSize: 14.5, fontWeight: 600 }}>Prioritats d'avui</div>
-          <div style={{ fontSize: 11.5, color: COLORS.textSec }}>{reminders.filter(r => r.done).length} de {reminders.length}</div>
+          <div style={{ fontSize: 11.5, color: COLORS.textSec }}>{tasks.filter((t) => t.done).length} de {tasks.length}</div>
         </div>
-        {priorities.map((r, i) => {
-          const topic = TOPICS.find(t => t.id === r.topic);
+        {priorities.map((t, i) => {
+          const topic = topicById(t.topic);
           return (
-            <div key={r.id} style={i === 0 ? S.checkRowFirst : S.checkRow}>
-              <button onClick={() => setReminderField(r.id, "done", !r.done)} style={{ ...S.chk, border: "none", background: r.done ? COLORS.accent : "#ede8e3", color: "#fff", cursor: "pointer" }}>{r.done ? "✓" : ""}</button>
-              <input style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 14.5, color: r.done ? COLORS.textFaint : COLORS.text, textDecoration: r.done ? "line-through" : "none" }}
-                value={r.text} autoFocus={newTaskFocused && i === priorities.length - 1} onChange={e => setReminderField(r.id, "text", e.target.value)} placeholder="Nova tasca" />
-              {topic && <button onClick={() => setReminderField(r.id, "topic", nextTopic(r.topic))} style={{ ...S.topicPill, color: topic.color, background: topic.color + "1f", border: "none", cursor: "pointer" }}>{topic.emoji} {topic.label}</button>}
-              {!topic && <button onClick={() => setReminderField(r.id, "topic", "ref")} style={{ ...S.smBtn, padding: "2px 6px", fontSize: 10 }}>+</button>}
-              <button onClick={() => setOverflowId(overflowId === r.id ? null : r.id)} style={{ background: "none", border: "none", color: "#c3b8ac", cursor: "pointer", fontSize: 15 }}>⋯</button>
+            <div key={t.id} style={i === 0 ? S.checkRowFirst : S.checkRow}>
+              <Checkbox checked={t.done} onChange={() => setTaskField(t.id, "done", !t.done)} size={20} />
+              <div style={{ flex: 1 }}>
+                <input style={{ width: "100%", border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 14.5, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}
+                  value={t.label} autoFocus={newTaskFocused && i === priorities.length - 1} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova tasca" />
+                {t.hint && <div style={{ fontSize: 11, color: COLORS.textFaint }}>{t.hint}</div>}
+              </div>
+              <button onClick={() => setTaskField(t.id, "topic", nextTopic(t.topic))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}><TopicPill topic={topic} /></button>
+              <button onClick={() => setOverflowId(overflowId === t.id ? null : t.id)} style={{ background: "none", border: "none", color: "#c3b8ac", cursor: "pointer", fontSize: 15 }}>⋯</button>
             </div>
           );
         })}
-        {overflowId && priorities.some(r => r.id === overflowId) && (
-          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-            <button onClick={() => removeEntry("reminders", overflowId)} style={{ ...S.smBtn, flex: 1, color: COLORS.alert, textAlign: "center" }}>Eliminar</button>
-            <button onClick={() => setOverflowId(null)} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Tancar</button>
+        {overflowId && priorities.some((t) => t.id === overflowId) && (
+          <div style={{ display: "flex", gap: 6, margin: "6px 0" }}>
+            <button onClick={() => { setTaskField(overflowId, "movedCount", (tasks.find(t=>t.id===overflowId)?.movedCount||0)+1); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Mou a demà</button>
+            <button onClick={() => { setTaskField(overflowId, "topic", nextTopic(tasks.find(t=>t.id===overflowId)?.topic)); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Canviar prioritat</button>
+            <button onClick={() => { removeTask(overflowId); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center", color: COLORS.alert }}>Eliminar</button>
           </div>
         )}
         {priorities.length === 0 && <p style={S.muted}>Cap tasca. Afegeix-ne amb el ➕ Tasca de dalt.</p>}
@@ -289,35 +280,32 @@ export function TodayView({ day, u, toggleHabit, allData, calEvents, addEntry, r
               <span style={{ fontSize: 12.5, color: COLORS.textSec }}>Si hi ha temps · {rest.length} tasques</span>
               <span style={{ color: COLORS.textSec, transition: "transform .2s", transform: showMore ? "rotate(90deg)" : "none" }}>›</span>
             </button>
-            {showMore && rest.map(r => (
-              <div key={r.id} style={S.checkRow}>
-                <button onClick={() => setReminderField(r.id, "done", !r.done)} style={{ ...S.chk, width: 18, height: 18, border: "none", background: r.done ? COLORS.accent : "#ede8e3", color: "#fff", cursor: "pointer" }}>{r.done ? "✓" : ""}</button>
-                <input style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 13, color: r.done ? COLORS.textFaint : COLORS.text, textDecoration: r.done ? "line-through" : "none" }}
-                  value={r.text} onChange={e => setReminderField(r.id, "text", e.target.value)} placeholder="Nova tasca" />
-                <button onClick={() => removeEntry("reminders", r.id)} style={S.delBtn}>×</button>
+            {showMore && rest.map((t) => (
+              <div key={t.id} style={{ ...S.checkRow, borderTop: `1px solid ${COLORS.borderSoft}` }}>
+                <Checkbox checked={t.done} onChange={() => setTaskField(t.id, "done", !t.done)} size={18} />
+                <input style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 13, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}
+                  value={t.label} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova tasca" />
+                <button onClick={() => removeTask(t.id)} style={S.delBtn}>×</button>
               </div>
             ))}
           </>
         )}
       </Card>
 
-      {/* Physical readiness */}
       {(ctx === "partitA" || ctx === "quart") && (
         <div style={S.g2}>
-          <button onClick={() => setTab("life")} style={{ ...S.mini, textAlign: "left", cursor: "pointer", fontFamily: "inherit", padding: "10px 12px" }}>
+          <button onClick={() => onOpenFull("son")} style={{ ...S.mini, textAlign: "left", cursor: "pointer", fontFamily: "inherit", padding: "10px 12px" }}>
             <div style={{ fontSize: 11.5, color: COLORS.textSec, marginBottom: 6 }}>Son d'ahir · Garmin</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
               <span style={{ fontSize: 26, fontWeight: 600 }}>{lastNightSleep?.score ?? "—"}</span>
               <span style={{ fontSize: 12, color: COLORS.textSec }}>{lastNightSleep?.hours ? `${lastNightSleep.hours.toFixed(1)}h` : ""}</span>
             </div>
-            <div style={{ height: 5, borderRadius: 99, background: COLORS.track, marginTop: 6 }}>
-              <div style={{ height: 5, borderRadius: 99, background: COLORS.warn, width: `${lastNightSleep?.score || 0}%` }} />
-            </div>
+            <div style={{ marginTop: 6 }}><div style={{ height: 5, borderRadius: 99, background: COLORS.track }}><div style={{ height: 5, borderRadius: 99, background: COLORS.warn, width: `${lastNightSleep?.score || 0}%` }} /></div></div>
           </button>
           <div style={{ ...S.mini, textAlign: "left", padding: "10px 12px" }}>
             <div style={{ fontSize: 11.5, color: COLORS.textSec, marginBottom: 6 }}>Energia ara</div>
             <div style={{ display: "flex", gap: 5 }}>
-              {[1, 2, 3, 4, 5].map(n => (
+              {[1, 2, 3, 4, 5].map((n) => (
                 <button key={n} onClick={() => u("energy", null, n)} style={{ width: 36, height: 36, borderRadius: 8, border: `1.5px solid ${day.energy === n ? COLORS.accent : COLORS.border}`, background: day.energy === n ? COLORS.accent : "#fdfbf9", color: day.energy === n ? "#fff" : COLORS.textSec, cursor: "pointer", fontFamily: "inherit" }}>{n}</button>
               ))}
             </div>
@@ -330,28 +318,29 @@ export function TodayView({ day, u, toggleHabit, allData, calEvents, addEntry, r
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
           <div style={{ fontSize: 14.5, fontWeight: 600 }}>Hàbits</div>
-          <div style={{ fontSize: 11.5, color: COLORS.textSec }}>{allHabits.filter(h => day.habits[h.id]).length} de {allHabits.length}</div>
+          <div style={{ fontSize: 11.5, color: COLORS.textSec }}>{habits.filter((h) => day.habits[h.id]).length} de {habits.length}</div>
         </div>
-        {allHabits.map((h, i) => {
-          const streak = computeStreak(h.id, allData);
+        {habits.map((h, i) => {
+          const streak = computeStreak(h.id, allData || {});
           const doneToday = Boolean(day.habits[h.id]);
-          const custom = customHabits.some(c => c.id === h.id);
+          const custom = (day.customHabits || []).some((c) => c.id === h.id);
+          const topic = topicById(h.topic);
           return (
             <div key={h.id} style={i === 0 ? S.checkRowFirst : S.checkRow}>
-              <button onClick={() => toggleHabit(h.id)} style={{ ...S.chk, border: "none", background: doneToday ? COLORS.accent : "#ede8e3", color: "#fff", cursor: "pointer" }}>{doneToday ? "✓" : ""}</button>
-              <span style={{ flex: 1, fontSize: 14, color: doneToday ? COLORS.text : COLORS.textSec }}>{h.text}</span>
-              <span style={{ fontSize: 11, fontWeight: 500, color: doneToday ? COLORS.accent : COLORS.textFaint }}>{doneToday && streak > 0 ? `🔥 ${streak + 1} dies` : streak > 0 ? streak : ""}</span>
+              <Checkbox checked={doneToday} onChange={() => toggleHabit(h.id)} color={topic.color} size={20} />
+              <span style={{ fontSize: 14 }}>{h.emoji}</span>
+              <span style={{ flex: 1, fontSize: 14, color: doneToday ? COLORS.text : COLORS.textSec }}>{h.label}</span>
+              <span style={{ fontSize: 11, fontWeight: 500, color: doneToday ? COLORS.accent : "#c3b8ac" }}>{doneToday && streak > 0 ? `🔥 ${streak + 1} dies` : streak > 0 ? streak : ""}</span>
               {custom && <button onClick={() => removeCustomHabit(h.id)} style={{ ...S.delBtn, fontSize: 14 }}>×</button>}
             </div>
           );
         })}
         <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-          <input style={{ ...S.inp, flex: 1, fontSize: 12.5 }} value={newHabitText} onChange={e => setNewHabitText(e.target.value)} placeholder="+ afegir hàbit d'avui..." onKeyDown={e => e.key === "Enter" && addCustomHabit()} />
+          <input style={{ ...S.inp, flex: 1, fontSize: 12.5 }} value={newHabitText} onChange={(e) => setNewHabitText(e.target.value)} placeholder="+ afegir hàbit d'avui..." onKeyDown={(e) => e.key === "Enter" && addCustomHabit()} />
           <button onClick={addCustomHabit} style={S.smBtn}>Afegir</button>
         </div>
       </Card>
 
-      {/* Pròximament */}
       {upcomingEvents.length > 0 && (
         <>
           <Lbl>Pròximament</Lbl>
@@ -369,18 +358,6 @@ export function TodayView({ day, u, toggleHabit, allData, calEvents, addEntry, r
           </Card>
         </>
       )}
-
-      <Card><Lbl>Focus principal d'avui</Lbl><textarea style={S.ta} value={day.focus || ""} onChange={e => u("focus", null, e.target.value)} placeholder="Una frase. El que importa avui." rows={2} /></Card>
-
-      <Card><Lbl>Contribucions (12 setmanes)</Lbl><ContributionGrid allData={allData} /></Card>
-
-      <button onClick={() => setSub("history")} style={S.navC}>
-        <span style={{ fontSize: 18 }}>📊</span>
-        <div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>Historial</div><div style={{ fontSize: 11, color: COLORS.textSec }}>Explora dies anteriors i tendències</div></div>
-        <span style={{ color: COLORS.textFaint }}>→</span>
-      </button>
-
-      <Card><Lbl>Reflexió</Lbl><textarea style={S.ta} value={day.reflection || ""} onChange={e => u("reflection", null, e.target.value)} placeholder="He complert el focus? Què ajusto demà?" rows={2} /></Card>
     </div>
   );
 }

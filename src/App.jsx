@@ -1,53 +1,43 @@
-import { useState, useEffect, useCallback } from "react";
-import { TABS } from "./lib/constants";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { TABS, DOMAINS, RITUAL_BANNERS } from "./lib/constants";
 import { defaultDay, defaultGlobal } from "./lib/defaults";
 import { storage } from "./lib/storage";
 import { todayKey, uid, fmtDate } from "./lib/utils";
-import { suggestHabits, weekStartKey } from "./lib/habitSuggest";
+import { weekStartKey } from "./lib/taskRules";
 import { S, COLORS } from "./lib/styles";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
 import { getSession, onAuthStateChange, fetchAll, upsertEntry, signOut } from "./lib/remoteStorage";
 import * as googleAuth from "./lib/googleAuth";
 import { fetchEvents } from "./lib/googleCalendar";
 import { useGarminSleepByDate } from "./lib/sleepMapApi";
+import { deriveMatchState, detectConfirmation } from "./lib/matchCycle";
 import { AuthScreen } from "./components/AuthScreen";
 import { TodayView } from "./components/TodayView";
-import { HistoryView } from "./components/HistoryView";
-import { RefView } from "./components/ref/RefView";
-import { WorkView } from "./components/WorkView";
-import { LifeView } from "./components/LifeView";
-import { CalView } from "./components/CalView";
+import { AgendaView } from "./components/AgendaView";
+import { SetmanaView, DomainSheet } from "./components/SetmanaView";
+import { JoView } from "./components/JoView";
+import { SonFullScreen } from "./components/SonFullScreen";
+import { FinancesFullScreen } from "./components/FinancesFullScreen";
+import { RitualNocturna } from "./components/RitualNocturna";
+import { RitualSetmanal } from "./components/RitualSetmanal";
 
-// Domain strip scores are a heuristic stand-in for the real per-domain scoring
-// the design spec calls for (which needs the Setmana build). "arbitratge" and
-// "son" are derived from real data already in the app; "relacions" from the
-// social log; "finances" has no data source yet so it stays empty/untappable.
-const DOMAINS = [
-  { id: "ref", emoji: "⚽", label: "arbitratge" },
-  { id: "life-social", emoji: "💛", label: "relacions" },
-  { id: "life-sleep", emoji: "💤", label: "son" },
-  { id: "fin", emoji: "💰", label: "finances" },
-];
-
-function useDomainScores(global, allData, garminSleep) {
-  const upcoming = (global.matches || []).filter(m => m.date >= todayKey()).sort((a, b) => a.date.localeCompare(b.date))[0];
-  const prep = upcoming?.prep || null;
+// Domain-strip scores — a heuristic stand-in for full per-domain scoring
+// (real scoring lives in SetmanaView's balance wheel). "finances" has no
+// live data source yet (sample-data only, see FinancesFullScreen).
+function useDomainScores(global, allData, garminSleep, matchState) {
+  const active = matchState.partitA?.role ? matchState.partitA : matchState.quart;
+  const prep = active?.prep || null;
   const prepVals = prep ? Object.values(prep) : null;
-  const arbitratge = prepVals?.length ? Math.round((prepVals.filter(Boolean).length / prepVals.length) * 10) : (upcoming ? 5 : null);
+  const arbitratge = prepVals?.length ? Math.round((prepVals.filter(Boolean).length / prepVals.length) * 10) : (active ? 5 : 7);
 
   const todaysSleepScore = garminSleep?.[todayKey()]?.score;
-  const son = todaysSleepScore != null ? Math.round(todaysSleepScore / 10) : null;
+  const son = todaysSleepScore != null ? Math.round(todaysSleepScore / 10) : 6;
 
-  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
-  const socialCount = Object.entries(allData).filter(([dk]) => dk >= weekAgo.toISOString().split("T")[0]).reduce((n, [, d]) => n + (d.social?.length || 0), 0);
-  const relacions = Math.min(10, socialCount * 3);
-
-  return { ref: arbitratge, "life-social": relacions, "life-sleep": son, fin: null };
+  return { arbitratge, relacions: 6, son, finances: 6 };
 }
 
 export default function App() {
-  const [tab, setTab] = useState("today");
-  const [sub, setSub] = useState(null);
+  const [tab, setTab] = useState("avui");
   const [allData, setAllData] = useState({});
   const [global, setGlobal] = useState(defaultGlobal());
   const [day, setDay] = useState(null);
@@ -57,6 +47,15 @@ export default function App() {
   const [calError, setCalError] = useState(null);
   const [googleConnected, setGoogleConnected] = useState(Boolean(googleAuth.getToken()));
   const [loading, setLoading] = useState(true);
+
+  // Overlay stack (README "Overlays stack above the shell"): sheet(20) <
+  // full(25) < ritual(35) < thursday(40).
+  const [sheet, setSheet] = useState(null); // domain id | null
+  const [full, setFull] = useState(null); // 'son' | 'fin' | null
+  const [ritual, setRitual] = useState(null); // 'nit' | 'set' | null
+  const [thursday, setThursday] = useState(null); // confirmed match info | null
+
+  const prevMatchStateRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,8 +103,8 @@ export default function App() {
     setAllData(nextAllData); setGlobal(g); setDay(updated);
     storage.set({ ...nextAllData, _global: g });
     if (isSupabaseConfigured && session) {
-      upsertEntry(session.user.id, k, updated).catch(e => console.error("Error sincronitzant amb Supabase:", e));
-      if (gUpdated) upsertEntry(session.user.id, "_global", g).catch(e => console.error("Error sincronitzant amb Supabase:", e));
+      upsertEntry(session.user.id, k, updated).catch((e) => console.error("Error sincronitzant amb Supabase:", e));
+      if (gUpdated) upsertEntry(session.user.id, "_global", g).catch((e) => console.error("Error sincronitzant amb Supabase:", e));
     }
   }, [allData, global, session]);
 
@@ -113,29 +112,26 @@ export default function App() {
     setGlobal(gUpdated);
     storage.set({ ...allData, [todayKey()]: day, _global: gUpdated });
     if (isSupabaseConfigured && session) {
-      upsertEntry(session.user.id, "_global", gUpdated).catch(e => console.error("Error sincronitzant amb Supabase:", e));
+      upsertEntry(session.user.id, "_global", gUpdated).catch((e) => console.error("Error sincronitzant amb Supabase:", e));
     }
   }, [allData, day, session]);
 
-  const u = (section, field, val) => {
+  // Writes today's tasks/habits/etc — thin wrapper kept for existing call
+  // sites (u("tasks", null, arr)) rather than a bespoke setter per field.
+  const u = (field, subfield, val) => {
     const d = { ...day };
-    if (field === null) d[section] = val;
-    else d[section] = { ...(d[section] || {}), [field]: val };
+    if (subfield === null) d[field] = val;
+    else d[field] = { ...(d[field] || {}), [subfield]: val };
     persist(d);
   };
 
   const toggleHabit = (id) => persist({ ...day, habits: { ...day.habits, [id]: !day.habits[id] } });
 
-  const addEntry = (section, entry) => { const d = { ...day }; d[section] = [...(d[section] || []), { ...entry, id: uid() }]; persist(d); };
-  const removeEntry = (section, id) => { const d = { ...day }; d[section] = d[section].filter(e => e.id !== id); persist(d); };
-  const updateEntry = (section, id, field, val) => { const d = { ...day }; d[section] = d[section].map(e => e.id === id ? { ...e, [field]: val } : e); persist(d); };
-
   /* ── Google Calendar sync ──
      OAuth via Google Identity Services (src/lib/googleAuth.js). First call
-     triggers the consent popup; subsequent calls just refresh events.
-     Reads the real signed-in calendar, which already includes Apple
-     Calendar events (one-way Apple → Google sync). See README for the
-     one-time Google Cloud Console setup (VITE_GOOGLE_CLIENT_ID). */
+     triggers the consent popup; subsequent calls just refresh events. Also
+     re-derives the match cycle state (src/lib/matchCycle.js) and fires the
+     Thursday transition moment when a TBD placeholder gets confirmed. */
   const fetchCalendar = async () => {
     setCalLoading(true);
     setCalError(null);
@@ -148,19 +144,26 @@ export default function App() {
       let token = googleAuth.getToken();
       if (!token) token = await googleAuth.connect();
       setGoogleConnected(true);
+      let events;
       try {
-        const events = await fetchEvents(token);
-        setCalEvents(events);
+        events = await fetchEvents(token);
       } catch (e) {
         if (e.code === 401) {
           googleAuth.disconnect();
           setGoogleConnected(false);
           const freshToken = await googleAuth.connect();
           setGoogleConnected(true);
-          const events = await fetchEvents(freshToken);
-          setCalEvents(events);
+          events = await fetchEvents(freshToken);
         } else throw e;
       }
+      setCalEvents(events);
+      const nextState = deriveMatchState(events);
+      const confirmed = detectConfirmation(prevMatchStateRef.current, nextState);
+      if (confirmed) {
+        setThursday(confirmed);
+        setTimeout(() => setThursday(null), 2400);
+      }
+      prevMatchStateRef.current = nextState;
     } catch (e) {
       console.error("Error sincronitzant amb Google Calendar:", e);
       setCalError(e.message || "Error sincronitzant amb Google Calendar.");
@@ -168,18 +171,27 @@ export default function App() {
     setCalLoading(false);
   };
 
+  useEffect(() => { if (googleConnected) fetchCalendar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const garminSleep = useGarminSleepByDate();
-  const domainScores = useDomainScores(global, allData, garminSleep);
+  const matchState = useMemo(() => deriveMatchState(calEvents), [calEvents]);
+  const domainScores = useDomainScores(global, allData, garminSleep, matchState);
+
+  // Ritual banners — derived from the clock/weekday, not user-set
+  // (README "banner/bannerHidden: Derived in production").
+  const now = new Date();
+  const bannerToShow = (() => {
+    if (!day) return null;
+    if (now.getDay() === 0 && now.getHours() >= RITUAL_BANNERS.set.afterHour && !global.weeklyReviews?.[weekStartKey()] && !day.ritualDismissed?.set) return "set";
+    if (now.getHours() >= RITUAL_BANNERS.nit.afterHour && !day.nightlyReview && !day.ritualDismissed?.nit) return "nit";
+    return null;
+  })();
+
+  const dismissBanner = (key) => persist({ ...day, ritualDismissed: { ...day.ritualDismissed, [key]: true } });
 
   if (loading) return <div style={S.loadWrap}><p style={{ color: COLORS.textSec }}>Carregant...</p></div>;
   if (isSupabaseConfigured && !session) return <AuthScreen />;
   if (!day) return <div style={S.loadWrap}><p style={{ color: COLORS.textSec }}>Carregant...</p></div>;
-
-  const goToDomain = (id) => {
-    if (id === "ref") setTab("ref");
-    else if (id === "life-social" || id === "life-sleep") setTab("life");
-    setSub(null);
-  };
 
   return (
     <div style={S.app}>
@@ -197,36 +209,60 @@ export default function App() {
       </div>
 
       <div style={S.body}>
-        {tab === "today" && sub === "history" && <HistoryView {...{ allData, setSub }} />}
-        {tab === "today" && sub !== "history" && <TodayView {...{ day, u, toggleHabit, allData, calEvents, fetchCalendar, calLoading, calError, googleConnected, addEntry, removeEntry, updateEntry, persist, global, saveGlobal, setSub, sub, garminSleep, setTab }} />}
-        {tab === "ref" && <RefView {...{ day, sub, setSub, u, addEntry, removeEntry, updateEntry, persist, global, saveGlobal, googleConnected, fetchCalendar: fetchCalendar }} />}
-        {tab === "work" && <WorkView {...{ day, addEntry, removeEntry, updateEntry, global, saveGlobal }} />}
-        {tab === "life" && <LifeView {...{ day, u, addEntry, removeEntry, updateEntry }} />}
-        {tab === "cal" && <CalView {...{ calEvents, fetchCalendar, calLoading, calError, global, saveGlobal }} />}
+        {tab === "avui" && (
+          <TodayView
+            day={day} global={global} allData={allData} garminSleep={garminSleep} u={u} toggleHabit={toggleHabit} persist={persist} saveGlobal={saveGlobal}
+            matchState={matchState} calEvents={calEvents} bannerToShow={bannerToShow} onOpenRitual={setRitual}
+            onDismissBanner={dismissBanner} onOpenFull={setFull} onOpenSheet={setSheet}
+          />
+        )}
+        {tab === "agenda" && (
+          <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} />
+        )}
+        {tab === "setmana" && <SetmanaView day={day} global={global} allData={allData} domainScores={domainScores} onOpenSheet={setSheet} />}
+        {tab === "jo" && <JoView day={day} global={global} allData={allData} garminSleep={garminSleep} onOpenFull={setFull} />}
       </div>
 
       <div style={S.domainStrip} className="app-domainstrip">
-        {DOMAINS.map(d => {
+        {DOMAINS.map((d) => {
           const score = domainScores[d.id];
           const pct = score != null ? score * 10 : 0;
-          const tappable = d.id !== "fin";
           return (
-            <button key={d.id} onClick={() => tappable && goToDomain(d.id)} style={{ ...S.domainBtn, cursor: tappable ? "pointer" : "default", opacity: tappable ? 1 : 0.55 }}>
+            <button key={d.id} onClick={() => setSheet(d.id)} style={S.domainBtn}>
               <span style={{ fontSize: 14 }}>{d.emoji}</span>
-              <span style={{ ...S.domainTrack, background: `linear-gradient(90deg, ${COLORS.accent} ${pct}%, ${COLORS.track} ${pct}%)` }} />
+              <span style={{ ...S.domainTrack, background: `linear-gradient(90deg, ${d.color} ${pct}%, ${COLORS.track} ${pct}%)` }} />
             </button>
           );
         })}
       </div>
 
       <div style={S.tabBar} className="app-tabbar">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => { setTab(t.id); setSub(null); }} style={{ ...S.tabBtn, color: tab === t.id ? COLORS.accent : "#b0a496" }}>
+        {TABS.map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...S.tabBtn, color: tab === t.id ? COLORS.accent : "#b0a496" }}>
             <span style={{ fontSize: 17 }}>{t.icon}</span>
             <span style={{ fontSize: 10.5, fontWeight: 500 }}>{t.label}</span>
           </button>
         ))}
       </div>
+
+      {sheet && <DomainSheet domain={sheet} onClose={() => setSheet(null)} />}
+      {full === "son" && <SonFullScreen garminSleep={garminSleep} onClose={() => setFull(null)} />}
+      {full === "fin" && <FinancesFullScreen onClose={() => setFull(null)} />}
+      {ritual === "nit" && <RitualNocturna day={day} persist={persist} onClose={() => setRitual(null)} />}
+      {ritual === "set" && <RitualSetmanal day={day} global={global} saveGlobal={saveGlobal} onClose={() => setRitual(null)} />}
+
+      {thursday && (
+        <div style={S.thursdayOverlay}>
+          <div style={{ position: "relative", width: 52, height: 52, marginBottom: 18 }}>
+            <div style={S.pulseRing} />
+            <div style={{ ...S.pulseRing, animationDelay: ".55s" }} />
+            <div style={{ width: 52, height: 52, borderRadius: 99, background: COLORS.ref, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>⚽</div>
+          </div>
+          <div style={S.ritualEyebrow}>DIJOUS · {now.getHours()}:{String(now.getMinutes()).padStart(2, "0")}</div>
+          <div style={{ fontSize: 21, fontWeight: 600, marginTop: 6 }}>{thursday.title}</div>
+          <div style={{ fontSize: 13, color: COLORS.textSec, maxWidth: 270, marginTop: 8 }}>{thursday.venue}. La preparació completa s'acaba d'activar.</div>
+        </div>
+      )}
     </div>
   );
 }
