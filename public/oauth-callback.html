@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8" />
+<title>Connectant…</title>
+</head>
+<body style="font-family: -apple-system, sans-serif; background: #faf7f4; color: #2a2420; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+<p>Tornant a l'app…</p>
+<script>
+  // Google's OAuth server only accepts https:// redirect URIs for a "Web
+  // application" client — it can't redirect straight to a custom URL scheme.
+  // This static page is that https:// redirect target: it just forwards the
+  // token fragment on to the native app's registered custom scheme, which iOS
+  // hands off to the app via the appUrlOpen listener (src/lib/googleAuth.js).
+  window.location.href = "tincagenda://oauth-callback" + window.location.hash;
+</script>
+</body>
+</html>
