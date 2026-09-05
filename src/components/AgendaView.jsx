@@ -132,7 +132,7 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
             {calEvents ? (agView === "day" ? `${fmtDate(selDate)} · ${dayEvents.length} esdeveniments` : `${CALENDARS.length} calendaris`) : "sense sincronitzar"}
           </div>
         </div>
-        <button onClick={fetchCalendar} style={S.smBtn}>{calLoading ? "..." : calEvents ? "Sincronitzar" : "Connectar"}</button>
+        <button onClick={() => fetchCalendar()} style={S.smBtn}>{calLoading ? "..." : calEvents ? "Sincronitzar" : "Connectar"}</button>
       </div>
 
       <Segmented opts={[{ id: "day", label: "Avui" }, { id: "week", label: "Setmana" }]} val={agView} set={(v) => { setAgView(v); setSelectedIdx(null); }} />
@@ -150,7 +150,7 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
             <line x1="16" y1="48" x2="46" y2="48" stroke="#ece5dd" strokeWidth="2" strokeLinecap="round" />
           </svg>
           <p style={{ fontSize: 14, color: COLORS.textSec, marginBottom: 14 }}>Cap esdeveniment avui. Dia lliure.</p>
-          {!googleConnected && <button onClick={fetchCalendar} style={S.pBtn}>Connecta Google Calendar</button>}
+          {!googleConnected && <button onClick={() => fetchCalendar()} style={S.pBtn}>Connecta Google Calendar</button>}
         </div>
       )}
 

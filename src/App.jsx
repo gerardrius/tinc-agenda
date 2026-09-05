@@ -146,17 +146,21 @@ export default function App() {
      triggers the consent popup; subsequent calls just refresh events. Also
      re-derives the match cycle state (src/lib/matchCycle.js) and fires the
      Thursday transition moment when a TBD placeholder gets confirmed. */
-  const fetchCalendar = async () => {
+  // `silent`: background refreshes (auto on mount, periodic re-sync) pass
+  // true so a failed/expired token just quietly leaves the app unsynced
+  // instead of surfacing an error the user never asked to see — only a
+  // manual tap on "Connectar"/"Sincronitzar" shows the consent popup.
+  const fetchCalendar = async (silent = false) => {
     setCalLoading(true);
-    setCalError(null);
+    if (!silent) setCalError(null);
     try {
       if (!googleAuth.isConfigured()) {
-        setCalError("Falta configurar VITE_GOOGLE_CLIENT_ID (mira el README).");
+        if (!silent) setCalError("Falta configurar VITE_GOOGLE_CLIENT_ID (mira el README).");
         setCalLoading(false);
         return;
       }
       let token = googleAuth.getToken();
-      if (!token) token = await googleAuth.connect();
+      if (!token) token = await googleAuth.connect({ silent });
       setGoogleConnected(true);
       let events;
       try {
@@ -165,7 +169,7 @@ export default function App() {
         if (e.code === 401) {
           googleAuth.disconnect();
           setGoogleConnected(false);
-          const freshToken = await googleAuth.connect();
+          const freshToken = await googleAuth.connect({ silent });
           setGoogleConnected(true);
           events = await fetchEvents(freshToken);
         } else throw e;
@@ -179,13 +183,25 @@ export default function App() {
       }
       prevMatchStateRef.current = nextState;
     } catch (e) {
-      console.error("Error sincronitzant amb Google Calendar:", e);
-      setCalError(e.message || "Error sincronitzant amb Google Calendar.");
+      if (!silent) {
+        console.error("Error sincronitzant amb Google Calendar:", e);
+        setCalError(e.message || "Error sincronitzant amb Google Calendar.");
+      }
     }
     setCalLoading(false);
   };
 
-  useEffect(() => { if (googleConnected) fetchCalendar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Auto-sync on open (silent — no popup) whenever the user has ever
+  // connected before, plus a periodic re-sync every 15 minutes while the
+  // app stays open, so Avui's match state (ctx) and Setmana de Descans
+  // update on their own instead of requiring a manual "Sincronitzar" tap
+  // every time the RFEF calendar changes.
+  useEffect(() => {
+    if (!googleAuth.hasConsented()) return;
+    fetchCalendar(true);
+    const id = setInterval(() => fetchCalendar(true), 15 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const garminSleep = useGarminSleepByDate();
   const matchState = useMemo(() => deriveMatchState(calEvents), [calEvents]);

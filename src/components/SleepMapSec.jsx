@@ -99,7 +99,6 @@ export function SleepMapSec() {
 
     loader.importLibrary("maps").then(async ({ Map }) => {
       if (cancelled) return;
-      const { AdvancedMarkerElement, PinElement } = await loader.importLibrary("marker");
 
       const map = new Map(mapDivRef.current, {
         mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID,
@@ -110,32 +109,43 @@ export function SleepMapSec() {
 
       const bounds = new window.google.maps.LatLngBounds();
 
+      // Classic Marker + a hand-built SVG icon, not AdvancedMarkerElement —
+      // AdvancedMarkerElement's PinElement only renders custom colors on a
+      // Map ID configured for vector rendering in Cloud Console; otherwise
+      // it silently falls back to a plain default marker. A plain SVG data
+      // URI icon renders identically regardless of Map ID style.
+      const pinIcon = (bg, glyph) => ({
+        url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38">
+            <circle cx="19" cy="19" r="17" fill="${bg}" stroke="#faf7f4" stroke-width="2" />
+            <text x="19" y="24" font-size="14" font-family="Inter,sans-serif" font-weight="600" fill="#faf7f4" text-anchor="middle">${glyph}</text>
+          </svg>`),
+        scaledSize: new window.google.maps.Size(38, 38),
+        anchor: new window.google.maps.Point(19, 19),
+      });
+
       // one reference pin per named place, always shown even with 0 nights
       state.places.forEach(p => {
         const cat = categories[p.place_name];
         const n = cat.nights.length;
-        const scoreAvg = avg(cat.nights.map(x => x.sleep_score_overall).filter(v => v != null));
-        const hoursAvg = avg(cat.nights.map(x => x.sleep_hours).filter(v => v != null));
-        const pin = new PinElement({
-          background: n ? ACCENT : "#374151",
-          borderColor: "#faf7f4",
-          glyphColor: "#faf7f4",
-          glyph: n ? String(n) : "",
+        const marker = new window.google.maps.Marker({
+          position: { lat: p.lat, lng: p.lng }, map, title: p.place_name,
+          icon: pinIcon(n ? ACCENT : "#8a7f74", n ? String(n) : ""),
         });
-        const marker = new AdvancedMarkerElement({
-          position: { lat: p.lat, lng: p.lng }, map, title: p.place_name, content: pin.element, gmpClickable: true,
-        });
-        marker.addEventListener("gmp-click", () => setPin(p.place_name));
+        marker.addListener("click", () => setPin(p.place_name));
         bounds.extend({ lat: p.lat, lng: p.lng });
       });
 
       // one marker per night that has its own coordinates (clustered — nights
-      // repeating at the same place will overlap almost exactly)
+      // repeating at the same place will overlap almost exactly) — plain
+      // colored-circle symbols, no glyph needed.
       const nightMarkers = [];
       state.nights.forEach(n => {
         if (n.lat == null || n.lng == null) return;
-        const pin = new PinElement({ background: scoreColor(n.sleep_score_overall), borderColor: "#faf7f4", glyphColor: "#faf7f4" });
-        const marker = new AdvancedMarkerElement({ position: { lat: n.lat, lng: n.lng }, content: pin.element, title: n.calendar_date, gmpClickable: true });
+        const marker = new window.google.maps.Marker({
+          position: { lat: n.lat, lng: n.lng }, title: n.calendar_date,
+          icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: scoreColor(n.sleep_score_overall), fillOpacity: 1, strokeColor: "#faf7f4", strokeWeight: 2 },
+        });
         const info = new window.google.maps.InfoWindow({
           content: `<div style="font-family:Inter,sans-serif;font-size:12px;min-width:150px">
             <strong>${n.place_name || n.city || "Lloc desconegut"}</strong><br/>
@@ -143,7 +153,7 @@ export function SleepMapSec() {
             Puntuació: ${n.sleep_score_overall ?? "—"} · ${n.sleep_hours != null ? n.sleep_hours.toFixed(1) : "—"}h
           </div>`,
         });
-        marker.addEventListener("gmp-click", () => info.open({ anchor: marker, map }));
+        marker.addListener("click", () => info.open({ anchor: marker, map }));
         bounds.extend({ lat: n.lat, lng: n.lng });
         nightMarkers.push(marker);
       });
