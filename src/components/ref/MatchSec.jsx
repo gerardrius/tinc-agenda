@@ -43,9 +43,9 @@ function UpcomingMatches({ global, saveGlobal }) {
         <Lbl m0>Propers partits</Lbl>
         {!form && <button onClick={startNew} style={S.smBtn}>+ Nou</button>}
       </div>
-      {err && <p style={{ ...S.muted, color: "#ef4444" }}>{err}</p>}
+      {err && <p style={{ ...S.muted, color: "#d4856a" }}>{err}</p>}
       {form && (
-        <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid #1c2127" }}>
+        <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid #ede8e3" }}>
           <div style={{ display: "flex", gap: 8 }}>
             <div style={{ flex: 1 }}><Inp label="Data" type="date" value={form.date} onChange={v => setForm({ ...form, date: v })} /></div>
             <div style={{ flex: 1 }}><Inp label="Hora" type="time" value={form.time} onChange={v => setForm({ ...form, time: v })} /></div>
@@ -56,23 +56,23 @@ function UpcomingMatches({ global, saveGlobal }) {
           <Lbl>Notes prèvies / pensaments</Lbl>
           <textarea style={S.ta} value={form.preNotes} onChange={e => setForm({ ...form, preNotes: e.target.value })} placeholder="Què vull tenir present abans d'aquest partit?" rows={2} />
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button onClick={commit} style={{ ...S.smBtn, color: "#4ade80" }}>Desar</button>
+            <button onClick={commit} style={{ ...S.smBtn, color: "#c4855a" }}>Desar</button>
             <button onClick={() => setForm(null)} style={S.smBtn}>Cancel·lar</button>
           </div>
         </div>
       )}
       {upcoming.map(m => (
-        <div key={m.id} style={{ padding: "8px 0", borderBottom: "1px solid #1c2127" }}>
+        <div key={m.id} style={{ padding: "8px 0", borderBottom: "1px solid #ede8e3" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
-              <div style={{ fontSize: 12, color: "#e5e7eb", fontWeight: 600 }}>{m.teams}</div>
-              <div style={{ fontSize: 10, color: "#8a919c" }}>{fmtDate(new Date(m.date + "T12:00"))} {m.time ? `· ${m.time}` : ""} {m.competition ? `· ${m.competition}` : ""}</div>
+              <div style={{ fontSize: 12, color: "#2a2420", fontWeight: 600 }}>{m.teams}</div>
+              <div style={{ fontSize: 10, color: "#8a7f74" }}>{fmtDate(new Date(m.date + "T12:00"))} {m.time ? `· ${m.time}` : ""} {m.competition ? `· ${m.competition}` : ""}</div>
             </div>
             <button onClick={() => remove(m.id)} style={{ ...S.delBtn, fontSize: 14 }}>×</button>
           </div>
-          {m.preNotes && <p style={{ fontSize: 11, color: "#8a919c", marginTop: 4 }}>{m.preNotes}</p>}
+          {m.preNotes && <p style={{ fontSize: 11, color: "#8a7f74", marginTop: 4 }}>{m.preNotes}</p>}
           {m.calendarEventId
-            ? <div style={{ fontSize: 10, color: "#4ade80", marginTop: 4 }}>✓ Recordatoris creats al calendari</div>
+            ? <div style={{ fontSize: 10, color: "#c4855a", marginTop: 4 }}>✓ Recordatoris creats al calendari</div>
             : <button onClick={() => createReminders(m)} style={{ ...S.smBtn, marginTop: 4 }}>{creatingId === m.id ? "..." : "Crear recordatoris al calendari"}</button>}
         </div>
       ))}

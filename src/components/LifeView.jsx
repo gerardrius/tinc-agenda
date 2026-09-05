@@ -10,18 +10,18 @@ export function LifeView({ day, u, addEntry, removeEntry, updateEntry }) {
 
   return (<div><Title>Vida</Title>
     <div style={{ display: "flex", gap: 3, marginBottom: 14 }}>{lifeTabs.map(t => (
-      <button key={t.id} onClick={() => setLt(t.id)} style={{ ...S.subT, background: lt === t.id ? "rgba(74,222,128,0.1)" : "#141719", color: lt === t.id ? "#4ade80" : "#6b7280", borderColor: lt === t.id ? "rgba(74,222,128,0.2)" : "#222830" }}>{t.label}</button>
+      <button key={t.id} onClick={() => setLt(t.id)} style={{ ...S.subT, background: lt === t.id ? "rgba(74,222,128,0.1)" : "#ffffff", color: lt === t.id ? "#c4855a" : "#8a7f74", borderColor: lt === t.id ? "rgba(74,222,128,0.2)" : "#ede8e3" }}>{t.label}</button>
     ))}</div>
 
     {lt === "mood" && (<Card>
       <Lbl>Com et trobes ara?</Lbl>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 4, marginBottom: 12 }}>{MOODS.map(m => (
-        <button key={m.id} onClick={() => u("mood", null, m.id)} style={{ flex: 1, padding: "8px 2px", borderRadius: 8, border: day.mood === m.id ? `2px solid ${m.color}` : "1px solid #222830", background: day.mood === m.id ? m.color + "18" : "#141719", cursor: "pointer", textAlign: "center" }}>
-          <div style={{ fontSize: 20 }}>{m.emoji}</div><div style={{ fontSize: 8, color: day.mood === m.id ? m.color : "#6b7280", marginTop: 2 }}>{m.label}</div>
+        <button key={m.id} onClick={() => u("mood", null, m.id)} style={{ flex: 1, padding: "8px 2px", borderRadius: 8, border: day.mood === m.id ? `2px solid ${m.color}` : "1px solid #ede8e3", background: day.mood === m.id ? m.color + "18" : "#ffffff", cursor: "pointer", textAlign: "center" }}>
+          <div style={{ fontSize: 20 }}>{m.emoji}</div><div style={{ fontSize: 8, color: day.mood === m.id ? m.color : "#8a7f74", marginTop: 2 }}>{m.label}</div>
         </button>))}</div>
       <Lbl>Sentiments</Lbl>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>{FEELINGS.map(f => (
-        <button key={f} onClick={() => { const fl = day.feelings || []; u("feelings", null, fl.includes(f) ? fl.filter(x => x !== f) : [...fl, f]); }} style={{ ...S.chip, background: (day.feelings||[]).includes(f) ? "#4ade8022" : "#1a1d21", color: (day.feelings||[]).includes(f) ? "#4ade80" : "#6b7280", borderColor: (day.feelings||[]).includes(f) ? "#4ade8044" : "#222830" }}>{f}</button>
+        <button key={f} onClick={() => { const fl = day.feelings || []; u("feelings", null, fl.includes(f) ? fl.filter(x => x !== f) : [...fl, f]); }} style={{ ...S.chip, background: (day.feelings||[]).includes(f) ? "#c4855a22" : "#ffffff", color: (day.feelings||[]).includes(f) ? "#c4855a" : "#8a7f74", borderColor: (day.feelings||[]).includes(f) ? "#c4855a44" : "#ede8e3" }}>{f}</button>
       ))}</div>
       <Lbl>Breu comentari</Lbl>
       <textarea style={S.ta} value={day.moodNote || ""} onChange={e => u("moodNote", null, e.target.value)} placeholder="Per què et sents així?" rows={2} />
@@ -35,7 +35,7 @@ export function LifeView({ day, u, addEntry, removeEntry, updateEntry }) {
 
     {lt === "screen" && (<div>
       <Card><Inp label="Pantalla total (min)" value={day.screen.total} onChange={v => u("screen", "total", v)} type="number" /><Inp label="Xarxes socials (min)" value={day.screen.social} onChange={v => u("screen", "social", v)} type="number" /><div style={S.g2}><Inp label="iPhone (min)" value={day.screen.iphone} onChange={v => u("screen", "iphone", v)} type="number" /><Inp label="Mac (min)" value={day.screen.mac} onChange={v => u("screen", "mac", v)} type="number" /></div><Lbl>Detonant</Lbl><textarea style={S.ta} value={day.screen.notes||""} onChange={e => u("screen", "notes", e.target.value)} placeholder="Avorriment, inèrcia..." rows={2} /></Card>
-      {parseInt(day.screen.social) > 20 && <div style={{ border: "1px solid #ef444433", background: "#ef444408", borderRadius: 8, padding: "8px 12px", marginTop: 6 }}><p style={{ color: "#ef4444", fontSize: 11, margin: 0 }}>⚠️ Per sobre de 20 min en xarxes.</p></div>}
+      {parseInt(day.screen.social) > 20 && <div style={{ border: "1px solid #d4856a33", background: "#d4856a08", borderRadius: 8, padding: "8px 12px", marginTop: 6 }}><p style={{ color: "#d4856a", fontSize: 11, margin: 0 }}>⚠️ Per sobre de 20 min en xarxes.</p></div>}
     </div>)}
 
     {lt === "sleep" && <SleepMapSec />}

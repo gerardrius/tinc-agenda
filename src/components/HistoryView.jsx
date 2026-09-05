@@ -32,7 +32,7 @@ function TrendChart({ allData }) {
       <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
         {cells.map(c => (
           <div key={c.dk} title={`${c.dk} · ${c.mood ? c.mood.label : "sense dades"}`}
-            style={{ flex: 1, height: 10, borderRadius: 5, background: c.mood ? c.mood.color : "#1a1d21" }} />
+            style={{ flex: 1, height: 10, borderRadius: 5, background: c.mood ? c.mood.color : "#ffffff" }} />
         ))}
       </div>
     </Card>
@@ -52,18 +52,18 @@ function DayDetail({ dk, dd, onBack }) {
       <div style={{ ...S.title, textTransform: "capitalize" }}>{fmtDate(new Date(dk + "T12:00"))}</div>
 
       <div style={S.g2}>
-        <div style={S.mini}><div style={{ fontSize: 9, color: "#6b7280" }}>Hàbits</div><div style={{ fontSize: 18, fontWeight: 700, color: habitsDone === habitsTotal && habitsTotal > 0 ? "#4ade80" : "#e5e7eb" }}>{habitsDone}/{habitsTotal}</div></div>
-        <div style={S.mini}><div style={{ fontSize: 9, color: "#6b7280" }}>Estat</div><div style={{ fontSize: 18, fontWeight: 700 }}>{mood ? mood.emoji : "—"}</div></div>
+        <div style={S.mini}><div style={{ fontSize: 9, color: "#8a7f74" }}>Hàbits</div><div style={{ fontSize: 18, fontWeight: 700, color: habitsDone === habitsTotal && habitsTotal > 0 ? "#c4855a" : "#2a2420" }}>{habitsDone}/{habitsTotal}</div></div>
+        <div style={S.mini}><div style={{ fontSize: 9, color: "#8a7f74" }}>Estat</div><div style={{ fontSize: 18, fontWeight: 700 }}>{mood ? mood.emoji : "—"}</div></div>
       </div>
 
-      {dd.focus && <Card><Lbl>Focus</Lbl><p style={{ fontSize: 12, color: "#d1d5db", margin: 0 }}>{dd.focus}</p></Card>}
+      {dd.focus && <Card><Lbl>Focus</Lbl><p style={{ fontSize: 12, color: "#2a2420", margin: 0 }}>{dd.focus}</p></Card>}
 
       <Card>
         <Lbl>Hàbits</Lbl>
         {allHabits.map(h => (
           <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
-            <span style={{ ...S.chk, width: 16, height: 16, fontSize: 9, background: dd.habits?.[h.id] ? "#4ade80" : "#252a30", color: dd.habits?.[h.id] ? "#000" : "#444" }}>{dd.habits?.[h.id] ? "✓" : ""}</span>
-            <span style={{ fontSize: 11, color: dd.habits?.[h.id] ? "#a7f3d0" : "#6b7280" }}>{h.text}</span>
+            <span style={{ ...S.chk, width: 16, height: 16, fontSize: 9, background: dd.habits?.[h.id] ? "#c4855a" : "#ede8e3", color: dd.habits?.[h.id] ? "#000" : "#b6aa9e" }}>{dd.habits?.[h.id] ? "✓" : ""}</span>
+            <span style={{ fontSize: 11, color: dd.habits?.[h.id] ? "#4f8f74" : "#8a7f74" }}>{h.text}</span>
           </div>
         ))}
       </Card>
@@ -74,27 +74,27 @@ function DayDetail({ dk, dd, onBack }) {
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: dd.feelings?.length ? 8 : 0 }}>
             <span style={{ fontSize: 18 }}>{mood.emoji}</span><span style={{ fontSize: 12, color: mood.color }}>{mood.label}</span>
           </div>
-          {dd.feelings?.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{dd.feelings.map(f => <span key={f} style={{ ...S.chip, background: "#4ade8022", color: "#4ade80", borderColor: "#4ade8044" }}>{f}</span>)}</div>}
-          {dd.moodNote && <p style={{ fontSize: 11, color: "#8a919c", marginTop: 8 }}>{dd.moodNote}</p>}
+          {dd.feelings?.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{dd.feelings.map(f => <span key={f} style={{ ...S.chip, background: "#c4855a22", color: "#c4855a", borderColor: "#c4855a44" }}>{f}</span>)}</div>}
+          {dd.moodNote && <p style={{ fontSize: 11, color: "#8a7f74", marginTop: 8 }}>{dd.moodNote}</p>}
         </Card>
       )}
 
       <div style={S.g2}>
-        <div style={S.mini}><div style={{ fontSize: 9, color: "#6b7280" }}>Pantalla</div><div style={{ fontSize: 16, fontWeight: 700 }}>{dd.screen?.total ? dd.screen.total + "'" : "—"}</div></div>
-        <div style={S.mini}><div style={{ fontSize: 9, color: "#6b7280" }}>Son</div><div style={{ fontSize: 16, fontWeight: 700 }}>{sleepThatDay?.hours ? sleepThatDay.hours.toFixed(1) + "h" : "—"}</div></div>
+        <div style={S.mini}><div style={{ fontSize: 9, color: "#8a7f74" }}>Pantalla</div><div style={{ fontSize: 16, fontWeight: 700 }}>{dd.screen?.total ? dd.screen.total + "'" : "—"}</div></div>
+        <div style={S.mini}><div style={{ fontSize: 9, color: "#8a7f74" }}>Son</div><div style={{ fontSize: 16, fontWeight: 700 }}>{sleepThatDay?.hours ? sleepThatDay.hours.toFixed(1) + "h" : "—"}</div></div>
       </div>
 
       {dd.match && (
         <Card style={{ borderLeft: "3px solid #f59e0b" }}>
           <Lbl>Partit</Lbl>
-          <p style={{ fontSize: 12, color: "#e5e7eb", margin: 0 }}>{dd.match.teams || "Partit registrat"}{dd.match.category ? ` · ${dd.match.category}` : ""}</p>
+          <p style={{ fontSize: 12, color: "#2a2420", margin: 0 }}>{dd.match.teams || "Partit registrat"}{dd.match.category ? ` · ${dd.match.category}` : ""}</p>
           {dd.match.rating && <p style={{ fontSize: 11, color: "#f59e0b", marginTop: 4 }}>Autoavaluació global: {dd.match.rating}/10</p>}
         </Card>
       )}
 
       <Card>
         <Lbl>Registres</Lbl>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, color: "#8a919c" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, color: "#8a7f74" }}>
           <span>🏃 {(dd.training || []).filter(t => t.category === "physical").length} físic</span>
           <span>🧠 {(dd.cognitive || []).length} cognitiu</span>
           <span>🎬 {(dd.video || []).length} vídeo</span>
@@ -103,7 +103,7 @@ function DayDetail({ dk, dd, onBack }) {
         </div>
       </Card>
 
-      {dd.reflection && <Card><Lbl>Reflexió</Lbl><p style={{ fontSize: 12, color: "#d1d5db", margin: 0 }}>{dd.reflection}</p></Card>}
+      {dd.reflection && <Card><Lbl>Reflexió</Lbl><p style={{ fontSize: 12, color: "#2a2420", margin: 0 }}>{dd.reflection}</p></Card>}
     </div>
   );
 }
@@ -132,12 +132,12 @@ export function HistoryView({ allData, setSub }) {
         return (
           <button key={dk} onClick={() => setSelDay(dk)} style={S.navC}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#e5e7eb", textTransform: "capitalize" }}>{dk === todayKey() ? "Avui" : fmtDate(new Date(dk + "T12:00"))}</div>
-              <div style={{ fontSize: 10, color: "#6b7280" }}>{dk}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#2a2420", textTransform: "capitalize" }}>{dk === todayKey() ? "Avui" : fmtDate(new Date(dk + "T12:00"))}</div>
+              <div style={{ fontSize: 10, color: "#8a7f74" }}>{dk}</div>
             </div>
             <span style={{ fontSize: 16 }}>{mood ? mood.emoji : "—"}</span>
             <span style={{ fontSize: 11, fontWeight: 700, color: habitColor(habitsDone), minWidth: 26, textAlign: "right" }}>{habitsDone}/{dayHabits.length}</span>
-            <span style={{ color: "#444" }}>→</span>
+            <span style={{ color: "#b6aa9e" }}>→</span>
           </button>
         );
       })}

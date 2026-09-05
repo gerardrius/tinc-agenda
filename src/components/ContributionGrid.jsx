@@ -22,7 +22,7 @@ export function ContributionGrid({ allData }) {
     <div style={{ overflowX: "auto" }}>
       <div style={{ display: "flex", gap: 2, minWidth: cols.length * 14 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 2, marginRight: 2 }}>
-          {days.map((d, i) => <div key={i} style={{ width: 14, height: 12, fontSize: 7, color: "#555", display: "flex", alignItems: "center" }}>{d}</div>)}
+          {days.map((d, i) => <div key={i} style={{ width: 14, height: 12, fontSize: 7, color: "#b6aa9e", display: "flex", alignItems: "center" }}>{d}</div>)}
         </div>
         {cols.map((week, wi) => (
           <div key={wi} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -33,9 +33,9 @@ export function ContributionGrid({ allData }) {
         ))}
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 3, marginTop: 6 }}>
-        <span style={{ fontSize: 8, color: "#555" }}>Menys</span>
-        {["#1a1d21", "#14532d", "#166534", "#22c55e", "#4ade80"].map((c, i) => <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: c }} />)}
-        <span style={{ fontSize: 8, color: "#555" }}>Més</span>
+        <span style={{ fontSize: 8, color: "#b6aa9e" }}>Menys</span>
+        {["#ffffff", "#14532d", "#166534", "#22c55e", "#c4855a"].map((c, i) => <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: c }} />)}
+        <span style={{ fontSize: 8, color: "#b6aa9e" }}>Més</span>
       </div>
     </div>
   );

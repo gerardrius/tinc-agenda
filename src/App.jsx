@@ -4,11 +4,12 @@ import { defaultDay, defaultGlobal } from "./lib/defaults";
 import { storage } from "./lib/storage";
 import { todayKey, uid, fmtDate } from "./lib/utils";
 import { suggestHabits, weekStartKey } from "./lib/habitSuggest";
-import { S } from "./lib/styles";
+import { S, COLORS } from "./lib/styles";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
 import { getSession, onAuthStateChange, fetchAll, upsertEntry, signOut } from "./lib/remoteStorage";
 import * as googleAuth from "./lib/googleAuth";
 import { fetchEvents } from "./lib/googleCalendar";
+import { useGarminSleepByDate } from "./lib/sleepMapApi";
 import { AuthScreen } from "./components/AuthScreen";
 import { TodayView } from "./components/TodayView";
 import { HistoryView } from "./components/HistoryView";
@@ -16,6 +17,33 @@ import { RefView } from "./components/ref/RefView";
 import { WorkView } from "./components/WorkView";
 import { LifeView } from "./components/LifeView";
 import { CalView } from "./components/CalView";
+
+// Domain strip scores are a heuristic stand-in for the real per-domain scoring
+// the design spec calls for (which needs the Setmana build). "arbitratge" and
+// "son" are derived from real data already in the app; "relacions" from the
+// social log; "finances" has no data source yet so it stays empty/untappable.
+const DOMAINS = [
+  { id: "ref", emoji: "⚽", label: "arbitratge" },
+  { id: "life-social", emoji: "💛", label: "relacions" },
+  { id: "life-sleep", emoji: "💤", label: "son" },
+  { id: "fin", emoji: "💰", label: "finances" },
+];
+
+function useDomainScores(global, allData, garminSleep) {
+  const upcoming = (global.matches || []).filter(m => m.date >= todayKey()).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const prep = upcoming?.prep || null;
+  const prepVals = prep ? Object.values(prep) : null;
+  const arbitratge = prepVals?.length ? Math.round((prepVals.filter(Boolean).length / prepVals.length) * 10) : (upcoming ? 5 : null);
+
+  const todaysSleepScore = garminSleep?.[todayKey()]?.score;
+  const son = todaysSleepScore != null ? Math.round(todaysSleepScore / 10) : null;
+
+  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+  const socialCount = Object.entries(allData).filter(([dk]) => dk >= weekAgo.toISOString().split("T")[0]).reduce((n, [, d]) => n + (d.social?.length || 0), 0);
+  const relacions = Math.min(10, socialCount * 3);
+
+  return { ref: arbitratge, "life-social": relacions, "life-sleep": son, fin: null };
+}
 
 export default function App() {
   const [tab, setTab] = useState("today");
@@ -140,50 +168,62 @@ export default function App() {
     setCalLoading(false);
   };
 
-  if (loading) return <div style={S.loadWrap}><p style={{ color: "#6b7280" }}>Carregant...</p></div>;
-  if (isSupabaseConfigured && !session) return <AuthScreen />;
-  if (!day) return <div style={S.loadWrap}><p style={{ color: "#6b7280" }}>Carregant...</p></div>;
+  const garminSleep = useGarminSleepByDate();
+  const domainScores = useDomainScores(global, allData, garminSleep);
 
-  const wk = weekStartKey();
-  const weekPlan = (global.weeklyPlans || {})[wk];
-  const todaysMatch = (global.matches || []).find(m => m.date === todayKey());
-  const habitsList = suggestHabits({ weekPlan, hasMatchToday: Boolean(todaysMatch || day.match) });
-  const customHabits = day.customHabits || [];
-  const habitsTotal = habitsList.length + customHabits.length;
-  const habitsDone = habitsList.filter(h => day.habits[h.id]).length + customHabits.filter(h => day.habits[h.id]).length;
+  if (loading) return <div style={S.loadWrap}><p style={{ color: COLORS.textSec }}>Carregant...</p></div>;
+  if (isSupabaseConfigured && !session) return <AuthScreen />;
+  if (!day) return <div style={S.loadWrap}><p style={{ color: COLORS.textSec }}>Carregant...</p></div>;
+
+  const goToDomain = (id) => {
+    if (id === "ref") setTab("ref");
+    else if (id === "life-social" || id === "life-sleep") setTab("life");
+    setSub(null);
+  };
 
   return (
     <div style={S.app}>
       <div style={S.header} className="app-header">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <div style={S.logo}>Tinc Agenda</div>
-            <div style={S.dateLabel}>{fmtDate(new Date())}</div>
+            <div style={S.logo}>Bon dia, Gerard</div>
+            <div style={{ ...S.dateLabel, textTransform: "capitalize" }}>{fmtDate(new Date())}</div>
             {isSupabaseConfigured && session && (
-              <button onClick={() => signOut()} style={{ ...S.smBtn, marginTop: 4, padding: "2px 7px", fontSize: 9 }}>Sortir</button>
+              <button onClick={() => signOut()} style={{ ...S.smBtn, marginTop: 6, padding: "2px 7px", fontSize: 9 }}>Sortir</button>
             )}
           </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 26, fontWeight: 800, color: habitsDone === habitsTotal && habitsTotal > 0 ? "#4ade80" : "#e5e7eb" }}>{habitsDone}/{habitsTotal}</div>
-            <div style={{ fontSize: 8, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.1em" }}>hàbits</div>
-          </div>
+          <div style={{ width: 34, height: 34, borderRadius: 99, background: "#f0e7de", border: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 600, color: COLORS.textSec, flexShrink: 0 }}>G</div>
         </div>
       </div>
 
       <div style={S.body}>
         {tab === "today" && sub === "history" && <HistoryView {...{ allData, setSub }} />}
-        {tab === "today" && sub !== "history" && <TodayView {...{ day, u, toggleHabit, habitsDone, allData, calEvents, fetchCalendar, calLoading, calError, googleConnected, addEntry, removeEntry, updateEntry, persist, global, saveGlobal, setSub, sub }} />}
+        {tab === "today" && sub !== "history" && <TodayView {...{ day, u, toggleHabit, allData, calEvents, fetchCalendar, calLoading, calError, googleConnected, addEntry, removeEntry, updateEntry, persist, global, saveGlobal, setSub, sub, garminSleep, setTab }} />}
         {tab === "ref" && <RefView {...{ day, sub, setSub, u, addEntry, removeEntry, updateEntry, persist, global, saveGlobal, googleConnected, fetchCalendar: fetchCalendar }} />}
         {tab === "work" && <WorkView {...{ day, addEntry, removeEntry, updateEntry, global, saveGlobal }} />}
         {tab === "life" && <LifeView {...{ day, u, addEntry, removeEntry, updateEntry }} />}
         {tab === "cal" && <CalView {...{ calEvents, fetchCalendar, calLoading, calError, global, saveGlobal }} />}
       </div>
 
+      <div style={S.domainStrip} className="app-domainstrip">
+        {DOMAINS.map(d => {
+          const score = domainScores[d.id];
+          const pct = score != null ? score * 10 : 0;
+          const tappable = d.id !== "fin";
+          return (
+            <button key={d.id} onClick={() => tappable && goToDomain(d.id)} style={{ ...S.domainBtn, cursor: tappable ? "pointer" : "default", opacity: tappable ? 1 : 0.55 }}>
+              <span style={{ fontSize: 14 }}>{d.emoji}</span>
+              <span style={{ ...S.domainTrack, background: `linear-gradient(90deg, ${COLORS.accent} ${pct}%, ${COLORS.track} ${pct}%)` }} />
+            </button>
+          );
+        })}
+      </div>
+
       <div style={S.tabBar} className="app-tabbar">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => { setTab(t.id); setSub(null); }} style={{ ...S.tabBtn, color: tab === t.id ? "#4ade80" : "#555" }}>
-            <span style={{ fontSize: 16 }}>{t.icon}</span>
-            <span style={{ fontSize: 8, marginTop: 1 }}>{t.label}</span>
+          <button key={t.id} onClick={() => { setTab(t.id); setSub(null); }} style={{ ...S.tabBtn, color: tab === t.id ? COLORS.accent : "#b0a496" }}>
+            <span style={{ fontSize: 17 }}>{t.icon}</span>
+            <span style={{ fontSize: 10.5, fontWeight: 500 }}>{t.label}</span>
           </button>
         ))}
       </div>

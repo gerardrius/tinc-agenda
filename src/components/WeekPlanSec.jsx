@@ -25,14 +25,14 @@ export function WeekPlanSec({ global, saveGlobal, setSub }) {
     <div>
       <button onClick={() => setSub(null)} style={S.back}>← Avui</button>
       <Title>Planificació setmanal</Title>
-      <p style={{ fontSize: 11, color: "#6b7280", marginBottom: 14 }}>
+      <p style={{ fontSize: 11, color: "#8a7f74", marginBottom: 14 }}>
         {fmtDate(monday)} – {fmtDate(sunday)}. Els hàbits del dia es suggereixen a partir d'això.
       </p>
       <Card>
         <Lbl>Aquesta setmana toca...</Lbl>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 4 }}>
           {WEEK_TAGS.map(t => (
-            <button key={t.id} onClick={() => toggleTag(t.id)} style={{ ...S.chip, background: plan.tags.includes(t.id) ? t.color + "22" : "#1a1d21", color: plan.tags.includes(t.id) ? t.color : "#6b7280", borderColor: plan.tags.includes(t.id) ? t.color + "44" : "#222830" }}>
+            <button key={t.id} onClick={() => toggleTag(t.id)} style={{ ...S.chip, background: plan.tags.includes(t.id) ? t.color + "22" : "#ffffff", color: plan.tags.includes(t.id) ? t.color : "#8a7f74", borderColor: plan.tags.includes(t.id) ? t.color + "44" : "#ede8e3" }}>
               {t.label}
             </button>
           ))}

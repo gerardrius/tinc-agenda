@@ -26,7 +26,7 @@ export function AuthScreen() {
 
         {sent ? (
           <div style={S.card}>
-            <p style={{ fontSize: 12, color: "#a7f3d0", margin: 0 }}>✓ T'hem enviat un enllaç màgic a <strong>{email}</strong>. Obre'l per entrar.</p>
+            <p style={{ fontSize: 12, color: "#4f8f74", margin: 0 }}>✓ T'hem enviat un enllaç màgic a <strong>{email}</strong>. Obre'l per entrar.</p>
           </div>
         ) : (
           <form onSubmit={send}>
@@ -41,7 +41,7 @@ export function AuthScreen() {
             <button type="submit" disabled={sending} style={{ ...S.pBtn, width: "100%", marginBottom: 0, opacity: sending ? 0.6 : 1 }}>
               {sending ? "Enviant..." : "Envia'm l'enllaç màgic"}
             </button>
-            {error && <p style={{ fontSize: 11, color: "#ef4444", marginTop: 10 }}>{error}</p>}
+            {error && <p style={{ fontSize: 11, color: "#d4856a", marginTop: 10 }}>{error}</p>}
           </form>
         )}
       </div>

@@ -9,7 +9,7 @@ export function WorkView({ day, addEntry, removeEntry, updateEntry, global, save
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}><Lbl m0>Recordatoris de feina</Lbl><button onClick={() => saveGlobal({ ...global, workReminders: [...wr, { id: uid(), text: "", done: false }] })} style={S.smBtn}>+ Nou</button></div>
       {wr.map(r => (<div key={r.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
-        <button onClick={() => saveGlobal({ ...global, workReminders: wr.map(x => x.id === r.id ? { ...x, done: !x.done } : x) })} style={{ ...S.chk, width: 18, height: 18, fontSize: 10, background: r.done ? "#60a5fa" : "#252a30", color: r.done ? "#000" : "#444", border: "none", cursor: "pointer" }}>{r.done ? "✓" : ""}</button>
+        <button onClick={() => saveGlobal({ ...global, workReminders: wr.map(x => x.id === r.id ? { ...x, done: !x.done } : x) })} style={{ ...S.chk, width: 18, height: 18, fontSize: 10, background: r.done ? "#60a5fa" : "#ede8e3", color: r.done ? "#000" : "#b6aa9e", border: "none", cursor: "pointer" }}>{r.done ? "✓" : ""}</button>
         <input style={{ ...S.inp, flex: 1, fontSize: 12, opacity: r.done ? 0.4 : 1, textDecoration: r.done ? "line-through" : "none" }} value={r.text} onChange={e => saveGlobal({ ...global, workReminders: wr.map(x => x.id === r.id ? { ...x, text: e.target.value } : x) })} placeholder="Recordatori..." />
         <button onClick={() => saveGlobal({ ...global, workReminders: wr.filter(x => x.id !== r.id) })} style={{ ...S.delBtn, fontSize: 14 }}>×</button>
       </div>))}

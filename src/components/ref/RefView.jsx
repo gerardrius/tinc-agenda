@@ -14,8 +14,8 @@ export function RefView({ day, sub, setSub, u, addEntry, removeEntry, updateEntr
   if (!sub) return (<div><Title>Arbitratge</Title>{REF_SUBS.map(s => (
     <button key={s.id} onClick={() => setSub(s.id)} style={S.navC}>
       <span style={{ fontSize: 18 }}>{s.icon}</span>
-      <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600, color: "#e5e7eb" }}>{s.label}</div><div style={{ fontSize: 10, color: "#6b7280" }}>{refSub(s.id, day, global)}</div></div>
-      <span style={{ color: "#444" }}>→</span>
+      <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600, color: "#2a2420" }}>{s.label}</div><div style={{ fontSize: 10, color: "#8a7f74" }}>{refSub(s.id, day, global)}</div></div>
+      <span style={{ color: "#b6aa9e" }}>→</span>
     </button>))}</div>);
 
   return (<div><button onClick={() => setSub(null)} style={S.back}>← Arbitratge</button>

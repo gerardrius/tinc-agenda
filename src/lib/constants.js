@@ -72,7 +72,7 @@ export const TRAIN_TYPES_PLAN = [
 ];
 
 export const EVENT_PRIORITIES = [
-  { id: "critical", label: "Crític", color: "#ef4444", bg: "#ef444418" },
-  { id: "important", label: "Important", color: "#f59e0b", bg: "#f59e0b18" },
-  { id: "normal", label: "Normal", color: "#6b7280", bg: "#6b728012" },
+  { id: "critical", label: "Crític", color: "#d4856a", bg: "#d4856a18" },
+  { id: "important", label: "Important", color: "#f0a868", bg: "#f0a86818" },
+  { id: "normal", label: "Normal", color: "#8a7f74", bg: "#8a7f7412" },
 ];

@@ -7,10 +7,10 @@ import { Card, Lbl, Title } from "./ui";
 const ACCENT = "#818cf8"; // same indigo used by the old manual sleep-quality chips
 
 function scoreColor(s) {
-  if (s == null) return "#6b7280";
-  if (s >= 80) return "#4ade80";
+  if (s == null) return "#8a7f74";
+  if (s >= 80) return "#c4855a";
   if (s >= 65) return "#f59e0b";
-  return "#ef4444";
+  return "#d4856a";
 }
 function avg(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null; }
 function hourFrac(iso) {
@@ -118,8 +118,8 @@ export function SleepMapSec() {
         const hoursAvg = avg(cat.nights.map(x => x.sleep_hours).filter(v => v != null));
         const pin = new PinElement({
           background: n ? ACCENT : "#374151",
-          borderColor: "#0d0f11",
-          glyphColor: "#0d0f11",
+          borderColor: "#faf7f4",
+          glyphColor: "#faf7f4",
           glyph: n ? String(n) : "",
         });
         const marker = new AdvancedMarkerElement({
@@ -140,7 +140,7 @@ export function SleepMapSec() {
       const nightMarkers = [];
       state.nights.forEach(n => {
         if (n.lat == null || n.lng == null) return;
-        const pin = new PinElement({ background: scoreColor(n.sleep_score_overall), borderColor: "#0d0f11", glyphColor: "#0d0f11" });
+        const pin = new PinElement({ background: scoreColor(n.sleep_score_overall), borderColor: "#faf7f4", glyphColor: "#faf7f4" });
         const marker = new AdvancedMarkerElement({ position: { lat: n.lat, lng: n.lng }, content: pin.element, title: n.calendar_date, gmpClickable: true });
         const info = new window.google.maps.InfoWindow({
           content: `<div style="font-family:Inter,sans-serif;font-size:12px;min-width:150px">
@@ -161,8 +161,8 @@ export function SleepMapSec() {
     return () => { cancelled = true; };
   }, [state.loading, state.error]);
 
-  if (state.loading) return <Card><p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>Carregant mapa del son…</p></Card>;
-  if (state.error) return <Card><p style={{ margin: 0, fontSize: 12, color: "#ef4444" }}>{state.error}</p></Card>;
+  if (state.loading) return <Card><p style={{ margin: 0, fontSize: 12, color: "#8a7f74" }}>Carregant mapa del son…</p></Card>;
+  if (state.error) return <Card><p style={{ margin: 0, fontSize: 12, color: "#d4856a" }}>{state.error}</p></Card>;
 
   if (view === "detail" && selectedKey) {
     const cat = categories[selectedKey];
@@ -170,18 +170,18 @@ export function SleepMapSec() {
     return (<div>
       <button onClick={() => setView("map")} style={{ background: "none", border: "none", color: ACCENT, fontSize: 12, cursor: "pointer", marginBottom: 10, padding: 0, fontFamily: "inherit", fontWeight: 500 }}>← Mapa</button>
       <Title>{cat.label}</Title>
-      {nights.length === 0 && <p style={{ fontSize: 11, color: "#6b7280" }}>Encara no hi ha nits registrades aquí.</p>}
+      {nights.length === 0 && <p style={{ fontSize: 11, color: "#8a7f74" }}>Encara no hi ha nits registrades aquí.</p>}
       {nights.map(n => (
         <Card key={n.calendar_date} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 12, fontWeight: 600 }}>{n.calendar_date}</div>
-            <div style={{ fontSize: 10, color: "#6b7280" }}>
+            <div style={{ fontSize: 10, color: "#8a7f74" }}>
               {n.sleep_start_local ? clockFromFrac(hourFrac(n.sleep_start_local)) : "—"}–{n.sleep_end_local ? clockFromFrac(hourFrac(n.sleep_end_local)) : "—"}
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: scoreColor(n.sleep_score_overall) }}>{n.sleep_score_overall ?? "—"}</div>
-            <div style={{ fontSize: 10, color: "#6b7280" }}>{n.sleep_hours != null ? n.sleep_hours.toFixed(1) : "—"}h</div>
+            <div style={{ fontSize: 10, color: "#8a7f74" }}>{n.sleep_hours != null ? n.sleep_hours.toFixed(1) : "—"}h</div>
           </div>
         </Card>
       ))}
@@ -190,7 +190,7 @@ export function SleepMapSec() {
 
   return (<div>
     <Title>Mapa del son</Title>
-    <div ref={mapDivRef} style={{ width: "100%", height: 280, borderRadius: 9, overflow: "hidden", border: "1px solid #222830", marginBottom: 10 }} />
+    <div ref={mapDivRef} style={{ width: "100%", height: 280, borderRadius: 9, overflow: "hidden", border: "1px solid #ede8e3", marginBottom: 10 }} />
     <Lbl>Llocs</Lbl>
     {order.map(k => {
       const c = categories[k];
@@ -201,13 +201,13 @@ export function SleepMapSec() {
       const rangeEnd = avgClock(c.nights.map(x => x.sleep_end_local));
       return (
         <button key={k} onClick={() => { setSelectedKey(k); setView("detail"); }}
-          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "10px 12px", background: "#141719", border: "1px solid #222830", borderRadius: 9, marginBottom: 6, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "10px 12px", background: "#ffffff", border: "1px solid #ede8e3", borderRadius: 9, marginBottom: 6, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{c.label}</div>
-            <div style={{ fontSize: 10, color: "#6b7280" }}>{n ? `${n} ${n === 1 ? "nit" : "nits"}` : (k === UNRESOLVED ? "sense dades de localització" : "sense nits encara")}</div>
+            <div style={{ fontSize: 10, color: "#8a7f74" }}>{n ? `${n} ${n === 1 ? "nit" : "nits"}` : (k === UNRESOLVED ? "sense dades de localització" : "sense nits encara")}</div>
           </div>
-          {n > 0 && (<div style={{ textAlign: "right", fontSize: 11, color: "#6b7280" }}>
-            <div>puntuació <strong style={{ color: "#e5e7eb" }}>{Math.round(scoreAvg)}</strong> · {hoursAvg.toFixed(1)}h</div>
+          {n > 0 && (<div style={{ textAlign: "right", fontSize: 11, color: "#8a7f74" }}>
+            <div>puntuació <strong style={{ color: "#2a2420" }}>{Math.round(scoreAvg)}</strong> · {hoursAvg.toFixed(1)}h</div>
             {rangeStart && rangeEnd && <div>{rangeStart}–{rangeEnd}</div>}
           </div>)}
         </button>
