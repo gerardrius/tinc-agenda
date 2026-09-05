@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
 import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { fetchSleepData } from "../lib/sleepMapApi";
-import { Card, Lbl, Title } from "./ui";
+import { Card, Lbl, Sheet, SheetCloseBtn } from "./ui";
+import { COLORS } from "../lib/styles";
 
 const ACCENT = "#818cf8"; // same indigo used by the old manual sleep-quality chips
 
@@ -78,8 +79,7 @@ function buildCategories(places, nights) {
 
 export function SleepMapSec() {
   const [state, setState] = useState({ loading: true, error: null, places: [], nights: [] });
-  const [view, setView] = useState("map");
-  const [selectedKey, setSelectedKey] = useState(null);
+  const [pin, setPin] = useState(null);
   const mapDivRef = useRef(null);
   const mapObjRef = useRef(null);
 
@@ -125,13 +125,7 @@ export function SleepMapSec() {
         const marker = new AdvancedMarkerElement({
           position: { lat: p.lat, lng: p.lng }, map, title: p.place_name, content: pin.element, gmpClickable: true,
         });
-        const info = new window.google.maps.InfoWindow({
-          content: `<div style="font-family:Inter,sans-serif;font-size:12px;min-width:150px">
-            <strong>${p.place_name}</strong><br/>
-            ${n ? `Puntuació mitjana: ${Math.round(scoreAvg)}<br/>Hores mitjanes: ${hoursAvg.toFixed(1)}h` : "Sense nits registrades encara"}
-          </div>`,
-        });
-        marker.addEventListener("gmp-click", () => info.open({ anchor: marker, map }));
+        marker.addEventListener("gmp-click", () => setPin(p.place_name));
         bounds.extend({ lat: p.lat, lng: p.lng });
       });
 
@@ -164,32 +158,12 @@ export function SleepMapSec() {
   if (state.loading) return <Card><p style={{ margin: 0, fontSize: 12, color: "#8a7f74" }}>Carregant mapa del son…</p></Card>;
   if (state.error) return <Card><p style={{ margin: 0, fontSize: 12, color: "#d4856a" }}>{state.error}</p></Card>;
 
-  if (view === "detail" && selectedKey) {
-    const cat = categories[selectedKey];
-    const nights = [...cat.nights].sort((a, b) => (a.calendar_date < b.calendar_date ? 1 : -1));
-    return (<div>
-      <button onClick={() => setView("map")} style={{ background: "none", border: "none", color: ACCENT, fontSize: 12, cursor: "pointer", marginBottom: 10, padding: 0, fontFamily: "inherit", fontWeight: 500 }}>← Mapa</button>
-      <Title>{cat.label}</Title>
-      {nights.length === 0 && <p style={{ fontSize: 11, color: "#8a7f74" }}>Encara no hi ha nits registrades aquí.</p>}
-      {nights.map(n => (
-        <Card key={n.calendar_date} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600 }}>{n.calendar_date}</div>
-            <div style={{ fontSize: 10, color: "#8a7f74" }}>
-              {n.sleep_start_local ? clockFromFrac(hourFrac(n.sleep_start_local)) : "—"}–{n.sleep_end_local ? clockFromFrac(hourFrac(n.sleep_end_local)) : "—"}
-            </div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: scoreColor(n.sleep_score_overall) }}>{n.sleep_score_overall ?? "—"}</div>
-            <div style={{ fontSize: 10, color: "#8a7f74" }}>{n.sleep_hours != null ? n.sleep_hours.toFixed(1) : "—"}h</div>
-          </div>
-        </Card>
-      ))}
-    </div>);
-  }
+  const pinCat = pin ? categories[pin] : null;
+  const pinNights = pinCat ? [...pinCat.nights].sort((a, b) => (a.calendar_date < b.calendar_date ? 1 : -1)) : [];
+  const pinScoreAvg = pinCat ? avg(pinCat.nights.map((x) => x.sleep_score_overall).filter((v) => v != null)) : null;
+  const pinHoursAvg = pinCat ? avg(pinCat.nights.map((x) => x.sleep_hours).filter((v) => v != null)) : null;
 
   return (<div>
-    <Title>Mapa del son</Title>
     <div ref={mapDivRef} style={{ width: "100%", height: 280, borderRadius: 9, overflow: "hidden", border: "1px solid #ede8e3", marginBottom: 10 }} />
     <Lbl>Llocs</Lbl>
     {order.map(k => {
@@ -200,7 +174,7 @@ export function SleepMapSec() {
       const rangeStart = avgClock(c.nights.map(x => x.sleep_start_local));
       const rangeEnd = avgClock(c.nights.map(x => x.sleep_end_local));
       return (
-        <button key={k} onClick={() => { setSelectedKey(k); setView("detail"); }}
+        <button key={k} onClick={() => setPin(k)}
           style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "10px 12px", background: "#ffffff", border: "1px solid #ede8e3", borderRadius: 9, marginBottom: 6, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{c.label}</div>
@@ -213,5 +187,30 @@ export function SleepMapSec() {
         </button>
       );
     })}
+
+    {pinCat && (
+      <Sheet onClose={() => setPin(null)}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 19, fontWeight: 600 }}>{pinCat.label}</div>
+          <SheetCloseBtn onClose={() => setPin(null)} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 14 }}>
+          <div style={{ textAlign: "center" }}><div style={{ fontSize: 18, fontWeight: 600 }}>{pinNights.length}</div><div style={{ fontSize: 10.5, color: COLORS.textSec }}>Nits</div></div>
+          <div style={{ textAlign: "center" }}><div style={{ fontSize: 18, fontWeight: 600, color: scoreColor(pinScoreAvg) }}>{pinScoreAvg != null ? Math.round(pinScoreAvg) : "—"}</div><div style={{ fontSize: 10.5, color: COLORS.textSec }}>Puntuació</div></div>
+          <div style={{ textAlign: "center" }}><div style={{ fontSize: 18, fontWeight: 600 }}>{pinHoursAvg != null ? pinHoursAvg.toFixed(1) : "—"}h</div><div style={{ fontSize: 10.5, color: COLORS.textSec }}>Hores</div></div>
+        </div>
+        <Card>
+          {pinNights.length === 0 && <p style={{ fontSize: 11, color: COLORS.textSec, margin: 0 }}>Encara no hi ha nits registrades aquí.</p>}
+          {pinNights.map((n, i) => (
+            <div key={n.calendar_date} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: i ? `1px solid ${COLORS.borderSoft}` : "none" }}>
+              <span style={{ fontSize: 12.5, color: COLORS.textSec }}>{n.calendar_date}</span>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: scoreColor(n.sleep_score_overall), display: "inline-block" }} />
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5, fontWeight: 500 }}>{n.sleep_score_overall ?? "—"}</span>
+              <span style={{ fontSize: 12.5, textAlign: "right", width: 52 }}>{n.sleep_hours != null ? `${n.sleep_hours.toFixed(1)}h` : "—"}</span>
+            </div>
+          ))}
+        </Card>
+      </Sheet>
+    )}
   </div>);
 }

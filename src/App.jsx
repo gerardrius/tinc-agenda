@@ -96,17 +96,31 @@ export default function App() {
     return () => { cancelled = true; subscription.unsubscribe(); };
   }, []);
 
-  const persist = useCallback((updated, gUpdated) => {
-    const k = todayKey();
+  // Writes one or more date-keyed day records in a single atomic update —
+  // used directly whenever a handler needs to change more than one thing at
+  // once (e.g. add a task AND mark a quick action used), since two separate
+  // `persist` calls in the same synchronous handler would each read the same
+  // stale `day`/`allData` snapshot and the second call would silently
+  // clobber the first. Also used by the nightly/weekly rituals to write
+  // several different dates' task lists at once.
+  const persistDates = useCallback((updates, gUpdated) => {
     const g = gUpdated || global;
-    const nextAllData = { ...allData, [k]: updated };
-    setAllData(nextAllData); setGlobal(g); setDay(updated);
+    const nextAllData = { ...allData, ...updates };
+    setAllData(nextAllData); setGlobal(g);
+    const tk = todayKey();
+    if (updates[tk]) setDay(updates[tk]);
     storage.set({ ...nextAllData, _global: g });
     if (isSupabaseConfigured && session) {
-      upsertEntry(session.user.id, k, updated).catch((e) => console.error("Error sincronitzant amb Supabase:", e));
+      Object.entries(updates).forEach(([dk, obj]) => {
+        upsertEntry(session.user.id, dk, obj).catch((e) => console.error("Error sincronitzant amb Supabase:", e));
+      });
       if (gUpdated) upsertEntry(session.user.id, "_global", g).catch((e) => console.error("Error sincronitzant amb Supabase:", e));
     }
   }, [allData, global, session]);
+
+  const persist = useCallback((updated, gUpdated) => {
+    persistDates({ [todayKey()]: updated }, gUpdated);
+  }, [persistDates]);
 
   const saveGlobal = useCallback((gUpdated) => {
     setGlobal(gUpdated);
@@ -219,7 +233,7 @@ export default function App() {
         {tab === "agenda" && (
           <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} />
         )}
-        {tab === "setmana" && <SetmanaView day={day} global={global} allData={allData} domainScores={domainScores} onOpenSheet={setSheet} />}
+        {tab === "setmana" && <SetmanaView day={day} global={global} allData={allData} garminSleep={garminSleep} domainScores={domainScores} onOpenSheet={setSheet} onOpenFull={setFull} />}
         {tab === "jo" && <JoView day={day} global={global} allData={allData} garminSleep={garminSleep} onOpenFull={setFull} />}
       </div>
 
@@ -245,11 +259,11 @@ export default function App() {
         ))}
       </div>
 
-      {sheet && <DomainSheet domain={sheet} onClose={() => setSheet(null)} />}
-      {full === "son" && <SonFullScreen garminSleep={garminSleep} onClose={() => setFull(null)} />}
+      {sheet && <DomainSheet domain={sheet} onClose={() => setSheet(null)} global={global} allData={allData} garminSleep={garminSleep} domainScores={domainScores} />}
+      {full === "son" && <SonFullScreen garminSleep={garminSleep} matchState={matchState} onClose={() => setFull(null)} />}
       {full === "fin" && <FinancesFullScreen onClose={() => setFull(null)} />}
-      {ritual === "nit" && <RitualNocturna day={day} persist={persist} onClose={() => setRitual(null)} />}
-      {ritual === "set" && <RitualSetmanal day={day} global={global} saveGlobal={saveGlobal} onClose={() => setRitual(null)} />}
+      {ritual === "nit" && <RitualNocturna day={day} allData={allData} calEvents={calEvents} persistDates={persistDates} onClose={() => setRitual(null)} />}
+      {ritual === "set" && <RitualSetmanal day={day} global={global} allData={allData} matchState={matchState} persistDates={persistDates} onClose={() => setRitual(null)} />}
 
       {thursday && (
         <div style={S.thursdayOverlay}>

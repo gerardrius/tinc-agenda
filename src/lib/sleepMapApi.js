@@ -24,7 +24,7 @@ export function useGarminSleepByDate() {
       .then(d => {
         if (cancelled) return;
         const m = {};
-        d.nights.forEach(n => { m[n.calendar_date] = { hours: n.sleep_hours, score: n.sleep_score_overall }; });
+        d.nights.forEach(n => { m[n.calendar_date] = { hours: n.sleep_hours, score: n.sleep_score_overall, start: n.sleep_start_local, end: n.sleep_end_local }; });
         setByDate(m);
       })
       .catch(() => { if (!cancelled) setByDate({}); });

@@ -80,7 +80,10 @@ export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, p
   const tasks = day.tasks || [];
   const priorities = tasks.slice(0, 3);
   const rest = tasks.slice(3);
-  const addTask = () => { u("tasks", null, [...tasks, { id: uid(), label: "", topic: "arbitratge", hint: "", done: false }]); setNewTaskFocused(true); u("qa", "tasca", true); };
+  const addTask = () => {
+    persist({ ...day, tasks: [...tasks, { id: uid(), label: "", topic: "arbitratge", hint: "", done: false }], qa: { ...day.qa, tasca: true } });
+    setNewTaskFocused(true);
+  };
   const setTaskField = (id, field, val) => u("tasks", null, tasks.map((t) => (t.id === id ? { ...t, [field]: val } : t)));
   const removeTask = (id) => u("tasks", null, tasks.filter((t) => t.id !== id));
 
@@ -92,18 +95,16 @@ export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, p
     const amount = window.prompt("Import de la despesa (€)");
     if (!amount) return;
     const category = window.prompt("Categoria") || "Altres";
-    u("expenses", null, [...(day.expenses || []), { id: uid(), amount: parseFloat(amount) || 0, category }]);
-    u("qa", "expense", true);
+    persist({ ...day, expenses: [...(day.expenses || []), { id: uid(), amount: parseFloat(amount) || 0, category }], qa: { ...day.qa, expense: true } });
   };
 
   const logSocial = () => {
     const who = window.prompt("Amb qui?");
     if (!who) return;
-    u("social", null, [...(day.social || []), { id: uid(), who }]);
-    u("qa", "social", true);
+    persist({ ...day, social: [...(day.social || []), { id: uid(), who }], qa: { ...day.qa, social: true } });
   };
 
-  const setMood = (n) => { u("mood", null, n); u("qa", "mood", true); setPickingMood(false); };
+  const setMood = (n) => { persist({ ...day, mood: n, qa: { ...day.qa, mood: true } }); setPickingMood(false); };
 
   // Nudges — real where the data exists, sample copy otherwise per state
   // (README nudge copy tables are per-ctx sample copy to wire against real
