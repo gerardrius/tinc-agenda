@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/import-referee-report.js": {
+      "includeFiles": "node_modules/pdfjs-dist/**"
+    }
+  }
+}
