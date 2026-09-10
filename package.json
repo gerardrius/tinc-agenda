@@ -20,7 +20,6 @@
     "@google-cloud/bigquery": "^9.0.3",
     "@googlemaps/js-api-loader": "^1.16.8",
     "@googlemaps/markerclusterer": "^2.5.3",
-    "@napi-rs/canvas": "^1.0.9",
     "@supabase/supabase-js": "^2.112.3",
     "pdf-parse": "^2.4.5",
     "react": "^18.3.1",

@@ -5,6 +5,7 @@
 // report seen so far), so labeled fields are reliably in the same spots.
 // Full extracted text is always stored in `raw_text` too, so a bad regex
 // match on some future report variant never loses the underlying data.
+import "./_pdf-polyfills.js";
 import { getBigQuery } from "./_bigquery.js";
 import { PDFParse } from "pdf-parse";
 
