@@ -33,19 +33,23 @@ export function RitualNocturna({ day, allData, calEvents, persistDates, onClose 
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({ energia: null, anim: null, productivitat: null, note: "" });
   const [taskDecisions, setTaskDecisions] = useState({}); // { [taskId]: 'moved' | 'dropped' }
-  const [tomorrow, setTomorrow] = useState(null); // seeded on entering step 3
+  const [tomorrow, setTomorrow] = useState(null); // seeded on entering step 3: { priorities: [], tasks: [] }
   const dragState = useRef(null);
   const [draggingIdx, setDraggingIdx] = useState(null);
+  const [draggingSection, setDraggingSection] = useState(null);
 
   const habits = day.habits || {};
   const tasks = day.tasks || [];
+  const MAX_PER_SECTION = 3;
 
   const seedTomorrow = () => {
     if (tomorrow) return;
-    const carried = tasks
-      .filter((t) => !t.done && taskDecisions[t.id] === "moved")
-      .map((t) => ({ id: uid(), label: t.label, topic: t.topic, movedCount: (t.movedCount || 0) + 1 }));
-    setTomorrow(carried);
+    const carried = tasks.filter((t) => !t.done && taskDecisions[t.id] === "moved");
+    const toRow = (t) => ({ id: uid(), label: t.label, topic: t.topic, movedCount: (t.movedCount || 0) + 1 });
+    setTomorrow({
+      priorities: carried.filter((t) => t.priority).map(toRow),
+      tasks: carried.filter((t) => !t.priority).map(toRow),
+    });
   };
 
   const goNext = () => {
@@ -63,25 +67,33 @@ export function RitualNocturna({ day, allData, calEvents, persistDates, onClose 
     const remainingToday = tasks.filter((t) => taskDecisions[t.id] !== "dropped" && taskDecisions[t.id] !== "moved");
     const tk = tomorrowKey();
     const tmrDay = allData[tk] || { date: tk, habits: {}, customHabits: [], tasks: [], mood: null, energy: null, qa: {}, nightlyReview: null, ritualDismissed: { nit: false, set: false }, expenses: [], social: [] };
+    const toDayTask = (priority) => (t) => ({ id: t.id, label: t.label, topic: t.topic, hint: "", done: false, movedCount: t.movedCount, priority });
+    const newTomorrowTasks = [
+      ...(tomorrow?.priorities || []).map(toDayTask(true)),
+      ...(tomorrow?.tasks || []).map(toDayTask(false)),
+    ];
     persistDates({
       [todayKey()]: { ...day, tasks: remainingToday, nightlyReview: { ...answers } },
-      [tk]: { ...tmrDay, tasks: (tomorrow || []).map((t) => ({ id: t.id, label: t.label, topic: t.topic, hint: "", done: false, movedCount: t.movedCount })) },
+      [tk]: { ...tmrDay, tasks: [...tmrDay.tasks, ...newTomorrowTasks] },
     });
     onClose();
   };
 
-  const moveRow = (from, to) => {
-    if (to < 0 || to >= tomorrow.length) return;
-    const next = [...tomorrow];
+  const moveRow = (section, from, to) => {
+    const list = tomorrow[section];
+    if (to < 0 || to >= list.length) return;
+    const next = [...list];
     const [item] = next.splice(from, 1);
     next.splice(to, 0, item);
-    setTomorrow(next);
+    setTomorrow({ ...tomorrow, [section]: next });
   };
 
-  const onHandleDown = (i, e) => {
-    dragState.current = { i, y0: e.clientY, startedAt: Date.now(), moved: false };
+  const onHandleDown = (section, i, e) => {
+    dragState.current = { section, i, y0: e.clientY, startedAt: Date.now(), moved: false };
     setTimeout(() => {
-      if (dragState.current?.i === i && !dragState.current.moved) setDraggingIdx(i);
+      if (dragState.current?.section === section && dragState.current?.i === i && !dragState.current.moved) {
+        setDraggingSection(section); setDraggingIdx(i);
+      }
     }, 460);
   };
   const onHandleMove = (e) => {
@@ -91,12 +103,12 @@ export function RitualNocturna({ day, allData, calEvents, persistDates, onClose 
     const rowH = 54;
     if (Math.abs(dy) > rowH) {
       const dir = dy > 0 ? 1 : -1;
-      moveRow(draggingIdx, draggingIdx + dir);
+      moveRow(draggingSection, draggingIdx, draggingIdx + dir);
       setDraggingIdx(draggingIdx + dir);
       dragState.current.y0 = e.clientY;
     }
   };
-  const onHandleUp = () => { setDraggingIdx(null); dragState.current = null; };
+  const onHandleUp = () => { setDraggingIdx(null); setDraggingSection(null); dragState.current = null; };
 
   const eyebrow = `Revisió nocturna · pas ${step + 1} de ${STEPS}`;
 
@@ -180,30 +192,46 @@ export function RitualNocturna({ day, allData, calEvents, persistDates, onClose 
         {step === 2 && tomorrow && (
           <>
             <div style={S.ritualStepTitle}>Prioritats de demà</div>
-            <div style={S.ritualStepSubtitle}>Ordena-les. Les 3 primeres són el que compta.</div>
-            {tomorrow.slice(0, 6).map((t, i) => {
-              const topic = topicById(t.topic);
-              const lifted = draggingIdx === i;
+            <div style={S.ritualStepSubtitle}>Fins a 3 prioritats i 3 tasques. Ordena-les o fes servir les fletxes.</div>
+            {["priorities", "tasks"].map((section) => {
+              const list = tomorrow[section];
+              const label = section === "priorities" ? "Prioritats" : "Tasques";
               return (
-                <div key={t.id} style={{ ...S.taskRow, ...(lifted ? S.taskRowLifted : {}) }}>
-                  <DragHandle onPointerDown={(e) => onHandleDown(i, e)} />
-                  <RankBubble rank={i + 1} />
-                  <input
-                    style={S.inlineInput}
-                    value={t.label}
-                    placeholder="Nova tasca"
-                    onChange={(e) => setTomorrow(tomorrow.map((x) => (x.id === t.id ? { ...x, label: e.target.value } : x)))}
-                  />
-                  <button onClick={() => setTomorrow(tomorrow.map((x) => (x.id === t.id ? { ...x, topic: nextTopic(x.topic) } : x)))} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}>
-                    <TopicPill topic={topic} />
-                  </button>
-                  <ArrowBtn dir="up" disabled={i === 0} onClick={() => moveRow(i, i - 1)} />
-                  <ArrowBtn dir="down" disabled={i === tomorrow.length - 1} onClick={() => moveRow(i, i + 1)} />
+                <div key={section} style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: COLORS.textMuted, marginBottom: 4 }}>{label} · {list.length} de {MAX_PER_SECTION}</div>
+                  {list.map((t, i) => {
+                    const topic = topicById(t.topic);
+                    const lifted = draggingSection === section && draggingIdx === i;
+                    return (
+                      <div key={t.id} style={{ ...S.taskRow, ...(lifted ? S.taskRowLifted : {}) }}>
+                        <DragHandle onPointerDown={(e) => onHandleDown(section, i, e)} />
+                        {section === "priorities" && <RankBubble rank={i + 1} />}
+                        <input
+                          style={S.inlineInput}
+                          value={t.label}
+                          placeholder={section === "priorities" ? "Nova prioritat" : "Nova tasca"}
+                          onChange={(e) => setTomorrow({ ...tomorrow, [section]: list.map((x) => (x.id === t.id ? { ...x, label: e.target.value } : x)) })}
+                        />
+                        <button onClick={() => setTomorrow({ ...tomorrow, [section]: list.map((x) => (x.id === t.id ? { ...x, topic: nextTopic(x.topic) } : x)) })} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}>
+                          <TopicPill topic={topic} />
+                        </button>
+                        <ArrowBtn dir="up" disabled={i === 0} onClick={() => moveRow(section, i, i - 1)} />
+                        <ArrowBtn dir="down" disabled={i === list.length - 1} onClick={() => moveRow(section, i, i + 1)} />
+                        <button onClick={() => setTomorrow({ ...tomorrow, [section]: list.filter((x) => x.id !== t.id) })} style={S.delBtn}>×</button>
+                      </div>
+                    );
+                  })}
+                  {list.length < MAX_PER_SECTION ? (
+                    <button onClick={() => setTomorrow({ ...tomorrow, [section]: [...list, { id: uid(), label: "", topic: "arbitratge" }] })} style={{ width: "100%", minHeight: 44, border: "1px dashed #ded6cd", background: "none", borderRadius: 10, color: COLORS.textSec, fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>
+                      ➕ Afegir {section === "priorities" ? "prioritat" : "tasca"}
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: 11, color: COLORS.textFaint, marginTop: 4 }}>Màxim {MAX_PER_SECTION}.</div>
+                  )}
                 </div>
               );
             })}
-            <button onClick={() => setTomorrow([...tomorrow, { id: uid(), label: "", topic: "arbitratge" }])} style={{ width: "100%", minHeight: 44, border: "1px dashed #ded6cd", background: "none", borderRadius: 10, color: COLORS.textSec, fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", marginTop: 8 }}>➕ Afegir tasca</button>
-            <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 8 }}>Manté premut ⠿ per arrossegar, o fes servir les fletxes. Les 3 primeres són prioritats.</div>
+            <div style={{ fontSize: 11.5, color: COLORS.textMuted }}>Manté premut ⠿ per arrossegar, o fes servir les fletxes.</div>
           </>
         )}
 
@@ -217,7 +245,7 @@ export function RitualNocturna({ day, allData, calEvents, persistDates, onClose 
                 <div style={{ flex: 1, background: COLORS.borderSoft, borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#6d6259" }}>{e.title}</div>
               </div>
             ))}
-            {(tomorrow || []).slice(0, 3).map((t) => (
+            {(tomorrow?.priorities || []).map((t) => (
               <div key={t.id} style={{ display: "flex", gap: 10, marginBottom: 8 }}>
                 <span style={{ width: 38, flexShrink: 0 }} />
                 <div style={{ flex: 1, background: "#fff", border: `1px solid ${COLORS.border}`, borderLeft: `3px solid ${COLORS.accent}`, borderRadius: 8, padding: "8px 10px", fontSize: 13, fontWeight: 500 }}>{t.label || "Nova tasca"}</div>

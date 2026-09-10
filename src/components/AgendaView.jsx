@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { CALENDARS, calendarColor, TOPICS, topicById, nextTopic } from "../lib/constants";
 import { fmtDate, fmtTime } from "../lib/utils";
 import { fixtureText, roleLabel } from "../lib/matchCycle";
@@ -10,6 +10,35 @@ const timelineHeight = (DAY_END - DAY_START) * PX_PER_HOUR;
 const hourOf = (iso) => { const d = new Date(iso); return d.getHours() + d.getMinutes() / 60; };
 const isTimed = (e) => e.start?.includes("T");
 const eventColor = (e) => (e.topic ? topicById(e.topic).color : calendarColor(e.title));
+const dateKey = (d) => d.toISOString().split("T")[0];
+const addDays = (d, n) => { const nd = new Date(d); nd.setDate(nd.getDate() + n); return nd; };
+
+// Monday of the week containing `d` (README: weeks are Monday–Sunday fixed).
+function mondayOf(d) {
+  const nd = new Date(d);
+  const dow = (nd.getDay() + 6) % 7; // 0 = Monday
+  nd.setDate(nd.getDate() - dow);
+  nd.setHours(0, 0, 0, 0);
+  return nd;
+}
+
+// Horizontal swipe → prev/next navigation. Ignored when the gesture is more
+// vertical than horizontal (so it doesn't fight the page's own scroll).
+function useSwipeNav(onLeft, onRight) {
+  const startRef = useRef(null);
+  return {
+    onTouchStart: (e) => { const t = e.touches[0]; startRef.current = { x: t.clientX, y: t.clientY }; },
+    onTouchEnd: (e) => {
+      const s = startRef.current; startRef.current = null;
+      if (!s) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - s.x, dy = t.clientY - s.y;
+      if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        if (dx < 0) onLeft(); else onRight();
+      }
+    },
+  };
+}
 
 // Greedy interval-graph coloring: events that overlap in time share the row,
 // each taking an equal fraction of the width (README "Overlaps").
@@ -89,24 +118,29 @@ function DayTimeline({ events, onSelect, selectedIdx, onCreateSlot }) {
   );
 }
 
-function WeekGrid({ calEvents, matchState, selDay, setSelDay }) {
-  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d; });
+const SHOWN_EVENTS_PER_DAY = 7;
+
+function WeekGrid({ weekStart, calEvents, matchState, focusDate, onSelectDay }) {
+  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const todayDk = dateKey(new Date());
+  const selDk = dateKey(focusDate);
   const matchDates = [matchState.partitA, matchState.quart].filter(Boolean).map((m) => m.start?.slice(0, 10));
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
-      {days.map((d, i) => {
-        const dk = d.toISOString().split("T")[0];
-        const isToday = i === 0;
+      {days.map((d) => {
+        const dk = dateKey(d);
+        const isToday = dk === todayDk;
+        const isSel = dk === selDk;
         const isMatch = matchDates.includes(dk);
         const dayEvents = (calEvents || []).filter((e) => e.start?.startsWith(dk));
-        const shown = dayEvents.slice(0, 4);
+        const shown = dayEvents.slice(0, SHOWN_EVENTS_PER_DAY);
         const extra = dayEvents.length - shown.length;
         return (
-          <button key={dk} onClick={() => setSelDay(i)} style={{
+          <button key={dk} onClick={() => onSelectDay(d)} style={{
             display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 2px 8px",
-            minHeight: 96, borderRadius: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
-            background: isMatch ? "#3b5bdb12" : selDay === i ? "#fff" : COLORS.bg,
-            border: `1px solid ${selDay === i ? COLORS.border : "transparent"}`,
+            minHeight: 150, borderRadius: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+            background: isMatch ? "#3b5bdb12" : isSel ? "#fff" : COLORS.bg,
+            border: `1px solid ${isSel ? COLORS.border : "transparent"}`,
           }}>
             <span style={{ fontSize: 9, visibility: isMatch ? "visible" : "hidden" }}>⚽</span>
             <span style={{ fontSize: 10, color: COLORS.textSec, letterSpacing: 0 }}>{d.toLocaleDateString("ca-ES", { weekday: "short" }).slice(0, 3)}</span>
@@ -115,10 +149,10 @@ function WeekGrid({ calEvents, matchState, selDay, setSelDay }) {
               {shown.map((e, j) => (
                 <div key={j} style={{ display: "flex", alignItems: "center", gap: 3 }}>
                   <span style={{ width: 5, height: 5, borderRadius: 99, background: eventColor(e), flexShrink: 0 }} />
-                  <span style={{ fontSize: 9, color: "#6d6259", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
+                  <span style={{ fontSize: 8.5, color: "#6d6259", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
                 </div>
               ))}
-              {extra > 0 && <span style={{ fontSize: 9, color: COLORS.textMuted }}>+{extra} més</span>}
+              {extra > 0 && <span style={{ fontSize: 8.5, color: COLORS.textMuted }}>+{extra} més</span>}
             </div>
           </button>
         );
@@ -128,18 +162,34 @@ function WeekGrid({ calEvents, matchState, selDay, setSelDay }) {
 }
 
 const DURATIONS = [30, 60, 90, 120];
+const MATCH_LETTERS = ["A", "B", "C"];
 
 function CreateEventSheet({ slot, date, onClose, onCreate }) {
+  const initial = new Date(date);
+  initial.setHours(Math.floor(slot), (slot % 1) * 60, 0, 0);
+  const toHHMM = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
   const [title, setTitle] = useState("");
   const [location, setLocation] = useState("");
-  const [duration, setDuration] = useState(60);
+  const [link, setLink] = useState("");
+  const [startTime, setStartTime] = useState(toHHMM(initial));
+  const [endTime, setEndTime] = useState(toHHMM(new Date(initial.getTime() + 60 * 60000)));
   const [topic, setTopic] = useState("arbitratge");
   const [saving, setSaving] = useState(false);
 
-  const startDate = new Date(date);
-  startDate.setHours(Math.floor(slot), (slot % 1) * 60, 0, 0);
-  const endDate = new Date(startDate.getTime() + duration * 60000);
+  const buildDate = (hhmm) => {
+    const [h, m] = hhmm.split(":").map(Number);
+    const d = new Date(date); d.setHours(h, m, 0, 0);
+    return d;
+  };
+  const startDate = buildDate(startTime);
+  const rawEnd = buildDate(endTime);
+  const endDate = rawEnd > startDate ? rawEnd : new Date(startDate.getTime() + 30 * 60000);
+  const durationMin = Math.round((endDate - startDate) / 60000);
   const topicObj = topicById(topic);
+
+  const applyDuration = (mins) => setEndTime(toHHMM(new Date(startDate.getTime() + mins * 60000)));
+  const applyMatchPreset = (letter) => { setTitle(`Partit ${letter} - `); setTopic("arbitratge"); };
 
   const submit = async () => {
     if (!title.trim() || saving) return;
@@ -148,6 +198,7 @@ function CreateEventSheet({ slot, date, onClose, onCreate }) {
       await onCreate({
         summary: `${topicObj.emoji} ${title.trim()}`,
         location,
+        description: link.trim(),
         startISO: startDate.toISOString(),
         endISO: endDate.toISOString(),
         topic,
@@ -160,46 +211,78 @@ function CreateEventSheet({ slot, date, onClose, onCreate }) {
   };
 
   return (
-    <Sheet onClose={onClose}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <div style={{ fontSize: 19, fontWeight: 600 }}>Nou event</div>
-        <SheetCloseBtn onClose={onClose} />
+    <Sheet onClose={onClose} maxHeight="82%">
+      <div style={{ display: "flex", flexDirection: "column", maxHeight: "72vh" }}>
+        <div style={{ overflowY: "auto", paddingBottom: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div style={{ fontSize: 19, fontWeight: 600 }}>Nou event</div>
+            <SheetCloseBtn onClose={onClose} />
+          </div>
+
+          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+            {MATCH_LETTERS.map((l) => (
+              <button key={l} onClick={() => applyMatchPreset(l)} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>⚽ Partit {l}</button>
+            ))}
+          </div>
+
+          <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Nom de l'event" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10.5, color: COLORS.textMuted, marginBottom: 3 }}>Inici</div>
+              <input type="time" style={{ ...S.inp, fontSize: 14 }} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10.5, color: COLORS.textMuted, marginBottom: 3 }}>Final</div>
+              <input type="time" style={{ ...S.inp, fontSize: 14 }} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            {DURATIONS.map((d) => (
+              <button key={d} onClick={() => applyDuration(d)} style={{
+                flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                border: `1px solid ${durationMin === d ? COLORS.accent : COLORS.border}`,
+                background: durationMin === d ? "#fbf2ea" : "#fdfbf9", color: durationMin === d ? COLORS.accent : COLORS.textSec,
+              }}>{d} min</button>
+            ))}
+          </div>
+
+          <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Lloc (opcional)" value={location} onChange={(e) => setLocation(e.target.value)} />
+          <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Enllaç (opcional)" value={link} onChange={(e) => setLink(e.target.value)} />
+
+          <button onClick={() => setTopic(nextTopic(topic))} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", marginBottom: 4 }}>
+            <TopicPill topic={topicObj} />
+          </button>
+        </div>
+
+        <button onClick={submit} disabled={!title.trim() || saving} style={{ ...S.pBtn, width: "100%", textAlign: "center", opacity: title.trim() ? 1 : 0.5, marginTop: 12, marginBottom: 0, flexShrink: 0 }}>
+          {saving ? "Creant…" : "Crear event"}
+        </button>
       </div>
-      <div style={{ fontSize: 12.5, color: COLORS.textSec, marginBottom: 12 }}>
-        {fmtTime(startDate.toISOString())} – {fmtTime(endDate.toISOString())}
-      </div>
-      <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Nom de l'event" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-      <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Lloc (opcional)" value={location} onChange={(e) => setLocation(e.target.value)} />
-      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-        {DURATIONS.map((d) => (
-          <button key={d} onClick={() => setDuration(d)} style={{
-            flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-            border: `1px solid ${duration === d ? COLORS.accent : COLORS.border}`,
-            background: duration === d ? "#fbf2ea" : "#fdfbf9", color: duration === d ? COLORS.accent : COLORS.textSec,
-          }}>{d} min</button>
-        ))}
-      </div>
-      <button onClick={() => setTopic(nextTopic(topic))} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", marginBottom: 14 }}>
-        <TopicPill topic={topicObj} />
-      </button>
-      <button onClick={submit} disabled={!title.trim() || saving} style={{ ...S.pBtn, width: "100%", textAlign: "center", opacity: title.trim() ? 1 : 0.5 }}>
-        {saving ? "Creant…" : "Crear event"}
-      </button>
     </Sheet>
   );
 }
 
 export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, matchState, googleConnected, onCreateEvent }) {
   const [agView, setAgView] = useState("day");
-  const [selDay, setSelDay] = useState(0);
+  const [focusDate, setFocusDate] = useState(() => new Date());
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [creatingSlot, setCreatingSlot] = useState(null);
 
-  const selDate = new Date(); selDate.setDate(selDate.getDate() + selDay);
-  const selDk = selDate.toISOString().split("T")[0];
+  const selDk = dateKey(focusDate);
   const dayEvents = (calEvents || []).filter((e) => e.start?.startsWith(selDk));
   const selectedEvent = selectedIdx != null ? dayEvents[selectedIdx] : null;
   const thisWeekMatch = [matchState.partitA, matchState.quart].filter(Boolean).find((m) => !m.isTBD);
+
+  const weekStart = mondayOf(focusDate);
+  const weekEnd = addDays(weekStart, 6);
+  const weekLabel = `${weekStart.getDate()} – ${weekEnd.getDate()} ${weekEnd.toLocaleDateString("ca-ES", { month: "long" })}`;
+
+  const goDay = (delta) => { setFocusDate((d) => addDays(d, delta)); setSelectedIdx(null); };
+  const goWeek = (delta) => { setFocusDate((d) => addDays(d, delta * 7)); };
+  const swipeDay = useSwipeNav(() => goDay(1), () => goDay(-1));
+  const swipeWeek = useSwipeNav(() => goWeek(1), () => goWeek(-1));
 
   return (
     <div>
@@ -207,13 +290,19 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
         <div>
           <div style={S.title}>Agenda</div>
           <div style={{ ...S.dateLabel, marginTop: -8, textTransform: "capitalize" }}>
-            {calEvents ? (agView === "day" ? `${fmtDate(selDate)} · ${dayEvents.length} esdeveniments` : `${CALENDARS.length} calendaris`) : "sense sincronitzar"}
+            {calEvents ? (agView === "day" ? `${fmtDate(focusDate)} · ${dayEvents.length} esdeveniments` : weekLabel) : "sense sincronitzar"}
           </div>
         </div>
         <button onClick={() => fetchCalendar()} style={S.smBtn}>{calLoading ? "..." : calEvents ? "Sincronitzar" : "Connectar"}</button>
       </div>
 
-      <Segmented opts={[{ id: "day", label: "Avui" }, { id: "week", label: "Setmana" }]} val={agView} set={(v) => { setAgView(v); setSelectedIdx(null); }} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <Segmented opts={[{ id: "day", label: "Avui" }, { id: "week", label: "Setmana" }]} val={agView} set={(v) => { setAgView(v); setSelectedIdx(null); }} />
+        <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={() => (agView === "day" ? goDay(-1) : goWeek(-1))} style={S.smBtn}>‹</button>
+          <button onClick={() => (agView === "day" ? goDay(1) : goWeek(1))} style={S.smBtn}>›</button>
+        </div>
+      </div>
 
       {calError && <p style={{ ...S.muted, color: COLORS.alert, textAlign: "center", marginTop: 30 }}>{calError}</p>}
 
@@ -233,9 +322,9 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
       )}
 
       {calEvents && agView === "day" && (
-        <div style={{ marginTop: 14 }}>
+        <div style={{ marginTop: 14 }} {...swipeDay}>
           <DayTimeline events={dayEvents} onSelect={setSelectedIdx} selectedIdx={selectedIdx} onCreateSlot={setCreatingSlot} />
-          {dayEvents.length === 0 && <p style={{ ...S.muted, textAlign: "center", marginTop: -6, marginBottom: 10 }}>Cap event {selDay === 0 ? "avui" : "aquest dia"}. Toca l'horari per afegir-ne un.</p>}
+          {dayEvents.length === 0 && <p style={{ ...S.muted, textAlign: "center", marginTop: -6, marginBottom: 10 }}>Cap event {selDk === dateKey(new Date()) ? "avui" : "aquest dia"}. Toca l'horari per afegir-ne un.</p>}
 
           {selectedEvent && (() => {
             const color = eventColor(selectedEvent);
@@ -244,6 +333,7 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
                 <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>{selectedEvent.title}</div>
                 <div style={{ fontSize: 11, color: COLORS.textSec, fontFamily: "'JetBrains Mono',monospace", marginTop: 2 }}>{fmtTime(selectedEvent.start)}{selectedEvent.end ? `–${fmtTime(selectedEvent.end)}` : ""}</div>
                 {selectedEvent.location && <div style={{ fontSize: 11, color: COLORS.textSec, marginTop: 2 }}>📍 {selectedEvent.location}</div>}
+                {selectedEvent.description && <div style={{ fontSize: 11, color: COLORS.textSec, marginTop: 2 }}>🔗 {selectedEvent.description}</div>}
               </div>
             );
           })()}
@@ -251,8 +341,8 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
       )}
 
       {calEvents && agView === "week" && (
-        <div style={{ marginTop: 14 }}>
-          <WeekGrid calEvents={calEvents} matchState={matchState} selDay={selDay} setSelDay={(i) => { setSelDay(i); setAgView("day"); }} />
+        <div style={{ marginTop: 14 }} {...swipeWeek}>
+          <WeekGrid weekStart={weekStart} calEvents={calEvents} matchState={matchState} focusDate={focusDate} onSelectDay={(d) => { setFocusDate(d); setAgView("day"); }} />
           {thisWeekMatch && (
             <div style={{ marginTop: 12, padding: "10px 14px", background: COLORS.matchStripBg, border: `1px solid ${COLORS.matchStripBorder}`, borderRadius: 12, fontSize: 12.5, color: COLORS.ref }}>
               ⚽ {roleLabel(thisWeekMatch.title)} · {fmtDate(new Date(thisWeekMatch.start))} · {fixtureText(thisWeekMatch.title)}
@@ -276,7 +366,7 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
       )}
 
       {creatingSlot != null && (
-        <CreateEventSheet slot={creatingSlot} date={selDate} onClose={() => setCreatingSlot(null)} onCreate={onCreateEvent} />
+        <CreateEventSheet slot={creatingSlot} date={focusDate} onClose={() => setCreatingSlot(null)} onCreate={onCreateEvent} />
       )}
     </div>
   );

@@ -1,19 +1,30 @@
 import { useState } from "react";
 import { S, COLORS } from "../lib/styles";
-import { Card, Checkbox, TopicPill } from "./ui";
+import { Card, Checkbox, TopicPill, ArrowBtn } from "./ui";
 import { BalanceWheel } from "./SetmanaView";
 import { computeDomainStats } from "../lib/domainStats";
 import { weekStartKey, parseIntention, taskForDay } from "../lib/taskRules";
-import { WEEKDAYS_ABBR, INTENTION_SUGGESTIONS_ALWAYS, topicById, nextTopic } from "../lib/constants";
+import { WEEKDAYS_ABBR, INTENTION_SUGGESTIONS_ALWAYS, TOPICS, topicById, nextTopic } from "../lib/constants";
+import { fmtTime, uid } from "../lib/utils";
 
-const STEPS = 5;
+// Step layout: 0 balanç · 1 valoració · 2 intenció · one step per pètal
+// (TOPICS) · generació (review) · agenda de la setmana · tancament.
+const PETAL_START = 3;
+const PETAL_END = PETAL_START + TOPICS.length - 1;
+const STEP_REVIEW = PETAL_END + 1;
+const STEP_AGENDA = STEP_REVIEW + 1;
+const STEP_FINAL = STEP_AGENDA + 1;
+const STEPS = STEP_FINAL + 1;
 
-export function RitualSetmanal({ day, global, allData, matchState, persistDates, onClose }) {
+const dateKey = (d) => d.toISOString().split("T")[0];
+const addDays = (d, n) => { const nd = new Date(d); nd.setDate(nd.getDate() + n); return nd; };
+
+export function RitualSetmanal({ day, global, allData, matchState, calEvents, persistDates, onClose }) {
   const [step, setStep] = useState(0);
   const [rate, setRate] = useState(null);
   const [why, setWhy] = useState("");
   const [intention, setIntention] = useState("");
-  const [suggested, setSuggested] = useState(null); // seeded on entering step 3
+  const [suggested, setSuggested] = useState(null); // seeded on leaving the intenció step
 
   const salut = computeDomainStats({ id: "salut", global, allData, domainScores: {} }).value;
   const scores = { arbitratge: 6, relacions: 6, salut, finances: 6, feina: 6 };
@@ -28,7 +39,7 @@ export function RitualSetmanal({ day, global, allData, matchState, persistDates,
 
   const seedSuggestions = () => { if (!suggested) setSuggested(parseIntention(intention)); };
   const goNext = () => {
-    if (step === 2) seedSuggestions();
+    if (step === PETAL_START - 1) seedSuggestions();
     if (step < STEPS - 1) setStep(step + 1);
     else finish();
   };
@@ -39,8 +50,30 @@ export function RitualSetmanal({ day, global, allData, matchState, persistDates,
     ...INTENTION_SUGGESTIONS_ALWAYS,
   ];
 
+  const wk = weekStartKey();
+  const nextMonday = addDays(new Date(wk), 7);
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(nextMonday, i));
+
+  const addPetalItem = (topicId) => {
+    setSuggested([...(suggested || []), { id: uid(), emoji: topicById(topicId).emoji, label: "", topic: topicId, day: null, included: true }]);
+  };
+
+  const moveTaskDay = (taskId, delta) => {
+    setSuggested(suggested.map((t) => (t.id === taskId && t.day != null ? { ...t, day: Math.max(0, Math.min(6, t.day + delta)) } : t)));
+  };
+  const moveTaskInDay = (dayIndex, taskId, delta) => {
+    const dayList = suggested.filter((t) => t.included && (t.day === dayIndex || t.day == null));
+    const idx = dayList.findIndex((t) => t.id === taskId);
+    const swapWith = dayList[idx + delta];
+    if (!swapWith) return;
+    const a = suggested.findIndex((t) => t.id === taskId);
+    const b = suggested.findIndex((t) => t.id === swapWith.id);
+    const next = [...suggested];
+    [next[a], next[b]] = [next[b], next[a]];
+    setSuggested(next);
+  };
+
   const finish = () => {
-    const wk = weekStartKey();
     const included = (suggested || []).filter((t) => t.included);
     const gUpdated = {
       ...global,
@@ -51,11 +84,9 @@ export function RitualSetmanal({ day, global, allData, matchState, persistDates,
     // with the global update in one persistDates call — separate calls
     // would each read the same stale `allData`/`global` snapshot and only
     // the last write would survive.
-    const nextMonday = new Date(wk); nextMonday.setDate(nextMonday.getDate() + 7);
     const updates = {};
     for (let i = 0; i < 7; i++) {
-      const d = new Date(nextMonday); d.setDate(d.getDate() + i);
-      const dk = d.toISOString().split("T")[0];
+      const dk = dateKey(weekDays[i]);
       const newTasks = included.map((item) => taskForDay(item, i)).filter(Boolean);
       if (!newTasks.length) continue;
       const existing = allData[dk] || { date: dk, habits: {}, customHabits: [], tasks: [], mood: null, energy: null, qa: {}, nightlyReview: null, ritualDismissed: { nit: false, set: false }, expenses: [], social: [] };
@@ -72,7 +103,7 @@ export function RitualSetmanal({ day, global, allData, matchState, persistDates,
     <div style={S.ritualShell}>
       <div style={S.ritualHeader}>
         <button style={S.backArrow} onClick={() => (step === 0 ? onClose() : setStep(step - 1))}>←</button>
-        <div style={{ display: "flex", gap: 5 }}>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", maxWidth: 220, justifyContent: "center" }}>
           {Array.from({ length: STEPS }, (_, i) => (
             <span key={i} style={{ ...S.ritualDot, ...(i < step ? S.ritualDotDone : {}), ...(i === step ? S.ritualDotActive : {}) }} />
           ))}
@@ -127,13 +158,56 @@ export function RitualSetmanal({ day, global, allData, matchState, persistDates,
                 <button key={p} onClick={() => setIntention((intention ? intention + " " : "") + p.replace(/^\S+\s/, ""))} style={{ padding: "6px 12px", borderRadius: 99, border: `1px solid ${COLORS.border}`, background: "#fff", fontSize: 12, fontWeight: 500, color: "#6d6259", cursor: "pointer", fontFamily: "inherit", boxShadow: S.card.boxShadow }}>{p}</button>
               ))}
             </div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 14 }}>Al següent pas et deixarem definir tasques i prioritats domini per domini.</div>
           </>
         )}
 
-        {step === 3 && suggested && (
+        {step >= PETAL_START && step <= PETAL_END && suggested && (() => {
+          const topic = TOPICS[step - PETAL_START];
+          const items = suggested.filter((t) => t.topic === topic.id);
+          return (
+            <>
+              <div style={S.ritualStepTitle}>{topic.emoji} {topic.label}</div>
+              <div style={S.ritualStepSubtitle}>Quines tasques o prioritats vols per aquest domini la setmana vinent?</div>
+              {items.map((t) => (
+                <Card key={t.id}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Checkbox checked={t.included} color={topic.color} size={20} onChange={() => setSuggested(suggested.map((x) => (x.id === t.id ? { ...x, included: !x.included } : x)))} />
+                    <input
+                      style={{ flex: 1, border: "none", background: "none", outline: "none", fontFamily: "inherit", fontSize: 13.5, color: t.included ? COLORS.text : COLORS.textFaint }}
+                      value={t.label}
+                      placeholder="Nova tasca"
+                      onChange={(e) => setSuggested(suggested.map((x) => (x.id === t.id ? { ...x, label: e.target.value } : x)))}
+                    />
+                    <button onClick={() => setSuggested(suggested.filter((x) => x.id !== t.id))} style={S.delBtn}>×</button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginLeft: 31, marginTop: 6 }}>
+                    {["Cada dia", ...WEEKDAYS_ABBR].map((label, i) => {
+                      const dayIdx = i === 0 ? null : i - 1;
+                      const selected = t.day === dayIdx;
+                      return (
+                        <button key={label} onClick={() => setSuggested(suggested.map((x) => (x.id === t.id ? { ...x, day: dayIdx } : x)))} style={{
+                          padding: "3px 8px", borderRadius: 99, fontSize: 10.5, cursor: "pointer", fontFamily: "inherit",
+                          border: `1px solid ${selected ? COLORS.accent : COLORS.border}`,
+                          background: selected ? "#fbf2ea" : "#fdfbf9", color: selected ? COLORS.accent : COLORS.textSec,
+                        }}>{label}</button>
+                      );
+                    })}
+                  </div>
+                </Card>
+              ))}
+              {items.length === 0 && <p style={S.muted}>Cap tasca encara per {topic.label.toLowerCase()}.</p>}
+              <button onClick={() => addPetalItem(topic.id)} style={{ width: "100%", minHeight: 44, border: "1px dashed #ded6cd", background: "none", borderRadius: 10, color: COLORS.textSec, fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>
+                ➕ Afegir a {topic.label.toLowerCase()}
+              </button>
+            </>
+          );
+        })()}
+
+        {step === STEP_REVIEW && suggested && (
           <>
             <div style={S.ritualStepTitle}>Generació de tasques</div>
-            <div style={S.ritualStepSubtitle}>Revisa i ajusta abans de confirmar.</div>
+            <div style={S.ritualStepSubtitle}>Revisa-ho tot junt abans de confirmar.</div>
             {suggested.map((t) => {
               const topic = topicById(t.topic);
               return (
@@ -165,11 +239,54 @@ export function RitualSetmanal({ day, global, allData, matchState, persistDates,
                 </Card>
               );
             })}
-            <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 4 }}>Detectat a la teva intenció: {suggested.length} tasques suggerides.</div>
+            <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 4 }}>{suggested.filter((t) => t.included).length} tasques confirmades per la setmana.</div>
           </>
         )}
 
-        {step === 4 && (
+        {step === STEP_AGENDA && suggested && (
+          <>
+            <div style={S.ritualStepTitle}>Agenda de la setmana</div>
+            <div style={S.ritualStepSubtitle}>Els teus compromisos amb les tasques col·locades. Fes servir ‹ › per canviar de dia i ↑ ↓ per reordenar.</div>
+            {weekDays.map((d, dayIdx) => {
+              const dk = dateKey(d);
+              const dayEvents = (calEvents || []).filter((e) => e.start?.startsWith(dk)).sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+              const dayTasks = suggested.filter((t) => t.included && (t.day === dayIdx || t.day == null));
+              return (
+                <Card key={dk}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: COLORS.text, textTransform: "capitalize", marginBottom: 6 }}>
+                    {d.toLocaleDateString("ca-ES", { weekday: "long", day: "numeric", month: "short" })}
+                  </div>
+                  {dayEvents.map((e, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0" }}>
+                      <span style={{ width: 38, fontFamily: "'JetBrains Mono',monospace", fontSize: 10.5, color: COLORS.textMuted, flexShrink: 0 }}>{fmtTime(e.start)}</span>
+                      <div style={{ flex: 1, background: COLORS.borderSoft, borderRadius: 8, padding: "6px 9px", fontSize: 12, color: "#6d6259" }}>{e.title}</div>
+                    </div>
+                  ))}
+                  {dayTasks.length === 0 && dayEvents.length === 0 && <div style={{ fontSize: 11.5, color: COLORS.textFaint, padding: "4px 0" }}>Res planificat.</div>}
+                  {dayTasks.map((t, i) => {
+                    const topic = topicById(t.topic);
+                    return (
+                      <div key={t.id} style={{ display: "flex", gap: 6, alignItems: "center", padding: "4px 0" }}>
+                        <span style={{ width: 38, flexShrink: 0 }} />
+                        <div style={{ flex: 1, background: "#fff", border: `1px solid ${COLORS.border}`, borderLeft: `3px solid ${topic.color}`, borderRadius: 8, padding: "6px 9px", fontSize: 12, fontWeight: 500 }}>{t.label || "Tasca"}</div>
+                        <ArrowBtn dir="up" disabled={i === 0} onClick={() => moveTaskInDay(dayIdx, t.id, -1)} />
+                        <ArrowBtn dir="down" disabled={i === dayTasks.length - 1} onClick={() => moveTaskInDay(dayIdx, t.id, 1)} />
+                        {t.day != null && (
+                          <>
+                            <button disabled={dayIdx === 0} onClick={() => moveTaskDay(t.id, -1)} style={{ ...S.arrowBtn, ...(dayIdx === 0 ? S.arrowBtnDisabled : {}) }}>‹</button>
+                            <button disabled={dayIdx === 6} onClick={() => moveTaskDay(t.id, 1)} style={{ ...S.arrowBtn, ...(dayIdx === 6 ? S.arrowBtnDisabled : {}) }}>›</button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </Card>
+              );
+            })}
+          </>
+        )}
+
+        {step === STEP_FINAL && (
           <>
             <div style={S.ritualStepTitle}>Setmana vinent preparada</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>

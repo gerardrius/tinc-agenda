@@ -47,8 +47,7 @@ function daysUntil(startISO) {
 }
 
 export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, persist, saveGlobal, matchState, calEvents, bannerToShow, onOpenRitual, onDismissBanner, onOpenFull, onOpenSheet }) {
-  const [newTaskFocused, setNewTaskFocused] = useState(false);
-  const [showMore, setShowMore] = useState(false);
+  const [focusId, setFocusId] = useState(null);
   const [overflowId, setOverflowId] = useState(null);
   const [newHabitText, setNewHabitText] = useState("");
   const [pickingMood, setPickingMood] = useState(false);
@@ -73,11 +72,19 @@ export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, p
   const habits = activeHabits({ hasMatchWithin7Days: Boolean(info && daysOut <= 7), customHabits: day.customHabits || [] });
 
   const tasks = day.tasks || [];
-  const priorities = tasks.slice(0, 3);
-  const rest = tasks.slice(3);
+  const priorities = tasks.filter((t) => t.priority);
+  const others = tasks.filter((t) => !t.priority);
+  const canAddPriority = priorities.length < 3;
   const addTask = () => {
-    persist({ ...day, tasks: [...tasks, { id: uid(), label: "", topic: "arbitratge", hint: "", done: false }], qa: { ...day.qa, tasca: true } });
-    setNewTaskFocused(true);
+    const id = uid();
+    persist({ ...day, tasks: [...tasks, { id, label: "", topic: "arbitratge", hint: "", done: false, priority: false }], qa: { ...day.qa, tasca: true } });
+    setFocusId(id);
+  };
+  const addPriority = () => {
+    if (!canAddPriority) return;
+    const id = uid();
+    persist({ ...day, tasks: [...tasks, { id, label: "", topic: "arbitratge", hint: "", done: false, priority: true }], qa: { ...day.qa, tasca: true } });
+    setFocusId(id);
   };
   const setTaskField = (id, field, val) => u("tasks", null, tasks.map((t) => (t.id === id ? { ...t, [field]: val } : t)));
   const removeTask = (id) => u("tasks", null, tasks.filter((t) => t.id !== id));
@@ -144,6 +151,7 @@ export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, p
 
       {/* Quick actions */}
       <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "2px 2px 10px", width: "max-content", maxWidth: "100%" }}>
+        {canAddPriority && <QuickPill emoji="🎯" label="Prioritat" onClick={addPriority} />}
         <QuickPill emoji="➕" label="Tasca" done={qa.tasca} onClick={addTask} />
         {!day.mood && <QuickPill emoji="😄" label="Registrar ànim" onClick={() => setPickingMood(!pickingMood)} />}
         {garminMissing && <QuickPill emoji="💤" label="Son d'ahir" onClick={() => onOpenFull("son")} />}
@@ -240,11 +248,11 @@ export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, p
         </Card>
       )}
 
-      {/* Today's tasks */}
+      {/* Priorities — independent list, capped at 3 */}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
           <div style={{ fontSize: 14.5, fontWeight: 600 }}>Prioritats d'avui</div>
-          <div style={{ fontSize: 11.5, color: COLORS.textSec }}>{tasks.filter((t) => t.done).length} de {tasks.length}</div>
+          <div style={{ fontSize: 11.5, color: COLORS.textSec }}>{priorities.filter((t) => t.done).length} de {priorities.length}</div>
         </div>
         {priorities.map((t, i) => {
           const topic = topicById(t.topic);
@@ -253,7 +261,7 @@ export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, p
               <Checkbox checked={t.done} onChange={() => setTaskField(t.id, "done", !t.done)} size={20} />
               <div style={{ flex: 1 }}>
                 <input style={{ width: "100%", border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 14.5, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}
-                  value={t.label} autoFocus={newTaskFocused && i === priorities.length - 1} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova tasca" />
+                  value={t.label} autoFocus={focusId === t.id} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova prioritat" />
                 {t.hint && <div style={{ fontSize: 11, color: COLORS.textFaint }}>{t.hint}</div>}
               </div>
               <button onClick={() => setTaskField(t.id, "topic", nextTopic(t.topic))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}><TopicPill topic={topic} /></button>
@@ -264,37 +272,46 @@ export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, p
         {overflowId && priorities.some((t) => t.id === overflowId) && (
           <div style={{ display: "flex", gap: 6, margin: "6px 0" }}>
             <button onClick={() => { setTaskField(overflowId, "movedCount", (tasks.find(t=>t.id===overflowId)?.movedCount||0)+1); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Mou a demà</button>
-            <button onClick={() => { setTaskField(overflowId, "topic", nextTopic(tasks.find(t=>t.id===overflowId)?.topic)); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Canviar prioritat</button>
+            <button onClick={() => { setTaskField(overflowId, "priority", false); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Treure de prioritats</button>
             <button onClick={() => { removeTask(overflowId); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center", color: COLORS.alert }}>Eliminar</button>
           </div>
         )}
-        {priorities.length === 0 && <p style={S.muted}>Cap tasca. Afegeix-ne amb el ➕ Tasca de dalt.</p>}
-
-        {rest.length > 0 && (
-          <>
-            <button onClick={() => setShowMore(!showMore)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", minHeight: 44, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
-              <span style={{ fontSize: 12.5, color: COLORS.textSec }}>Si hi ha temps · {rest.length} tasques</span>
-              <span style={{ color: COLORS.textSec, transition: "transform .2s", transform: showMore ? "rotate(90deg)" : "none" }}>›</span>
-            </button>
-            {showMore && rest.map((t) => {
-              const restTopic = topicById(t.topic);
-              return (
-                <div key={t.id} style={{ ...S.checkRow, borderTop: `1px solid ${COLORS.borderSoft}` }}>
-                  <Checkbox checked={t.done} onChange={() => setTaskField(t.id, "done", !t.done)} size={18} />
-                  <input style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 13, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}
-                    value={t.label} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova tasca" />
-                  <button onClick={() => setTaskField(t.id, "topic", nextTopic(t.topic))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}><TopicPill topic={restTopic} /></button>
-                  <button onClick={() => removeTask(t.id)} style={S.delBtn}>×</button>
-                </div>
-              );
-            })}
-          </>
+        {priorities.length === 0 && <p style={S.muted}>Cap prioritat. Afegeix-ne amb el 🎯 Prioritat de dalt.</p>}
+        {canAddPriority && (
+          <button onClick={addPriority} style={{ width: "100%", minHeight: 40, marginTop: 8, border: "1px dashed #ded6cd", background: "none", borderRadius: 8, color: COLORS.textSec, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
+            ➕ Afegir prioritat
+          </button>
         )}
+        {!canAddPriority && <div style={{ fontSize: 11, color: COLORS.textFaint, marginTop: 8 }}>Màxim 3 prioritats.</div>}
+      </Card>
 
-        <button
-          onClick={() => { u("tasks", null, [...tasks, { id: uid(), label: "", topic: "arbitratge", hint: "", done: false }]); setNewTaskFocused(true); }}
-          style={{ width: "100%", minHeight: 40, marginTop: 8, border: "1px dashed #ded6cd", background: "none", borderRadius: 8, color: COLORS.textSec, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
-        >
+      {/* Tasks — independent list, unlimited */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 600 }}>Tasques</div>
+          <div style={{ fontSize: 11.5, color: COLORS.textSec }}>{others.filter((t) => t.done).length} de {others.length}</div>
+        </div>
+        {others.map((t, i) => {
+          const topic = topicById(t.topic);
+          return (
+            <div key={t.id} style={i === 0 ? S.checkRowFirst : S.checkRow}>
+              <Checkbox checked={t.done} onChange={() => setTaskField(t.id, "done", !t.done)} size={18} />
+              <input style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 13.5, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}
+                value={t.label} autoFocus={focusId === t.id} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova tasca" />
+              <button onClick={() => setTaskField(t.id, "topic", nextTopic(t.topic))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}><TopicPill topic={topic} /></button>
+              <button onClick={() => setOverflowId(overflowId === t.id ? null : t.id)} style={{ background: "none", border: "none", color: "#c3b8ac", cursor: "pointer", fontSize: 15 }}>⋯</button>
+            </div>
+          );
+        })}
+        {overflowId && others.some((t) => t.id === overflowId) && (
+          <div style={{ display: "flex", gap: 6, margin: "6px 0" }}>
+            <button onClick={() => { setTaskField(overflowId, "movedCount", (tasks.find(t=>t.id===overflowId)?.movedCount||0)+1); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Mou a demà</button>
+            {canAddPriority && <button onClick={() => { setTaskField(overflowId, "priority", true); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Marcar prioritat</button>}
+            <button onClick={() => { removeTask(overflowId); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center", color: COLORS.alert }}>Eliminar</button>
+          </div>
+        )}
+        {others.length === 0 && <p style={S.muted}>Cap tasca. Afegeix-ne amb el ➕ Tasca de dalt.</p>}
+        <button onClick={addTask} style={{ width: "100%", minHeight: 40, marginTop: 8, border: "1px dashed #ded6cd", background: "none", borderRadius: 8, color: COLORS.textSec, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
           ➕ Afegir tasca
         </button>
       </Card>

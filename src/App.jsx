@@ -167,8 +167,7 @@ export default function App() {
         events = await fetchEvents(token);
       } catch (e) {
         if (e.code === 401) {
-          googleAuth.disconnect();
-          setGoogleConnected(false);
+          googleAuth.forgetAccessToken();
           const freshToken = await googleAuth.connect({ silent });
           setGoogleConnected(true);
           events = await fetchEvents(freshToken);
@@ -193,16 +192,16 @@ export default function App() {
 
   // Creates a real event on the user's Google Calendar from the Agenda
   // "tap an empty slot" flow, then refreshes so it shows up immediately.
-  const handleCreateEvent = async ({ summary, location, startISO, endISO, topic }) => {
+  const handleCreateEvent = async ({ summary, location, description, startISO, endISO, topic }) => {
     let token = googleAuth.getToken();
     if (!token) token = await googleAuth.connect();
     try {
-      await createEvent(token, { summary, location, startISO, endISO, topic, reminderMinutesBefore: [30] });
+      await createEvent(token, { summary, location, description, startISO, endISO, topic, reminderMinutesBefore: [30] });
     } catch (e) {
       if (e.code === 401) {
-        googleAuth.disconnect();
+        googleAuth.forgetAccessToken();
         const freshToken = await googleAuth.connect();
-        await createEvent(freshToken, { summary, location, startISO, endISO, topic, reminderMinutesBefore: [30] });
+        await createEvent(freshToken, { summary, location, description, startISO, endISO, topic, reminderMinutesBefore: [30] });
       } else throw e;
     }
     await fetchCalendar();
@@ -296,7 +295,7 @@ export default function App() {
       {full === "son" && <SonFullScreen garminSleep={garminSleep} matchState={matchState} onClose={() => setFull(null)} />}
       {full === "fin" && <FinancesFullScreen onClose={() => setFull(null)} />}
       {ritual === "nit" && <RitualNocturna day={day} allData={allData} calEvents={calEvents} persistDates={persistDates} onClose={() => setRitual(null)} />}
-      {ritual === "set" && <RitualSetmanal day={day} global={global} allData={allData} matchState={matchState} persistDates={persistDates} onClose={() => setRitual(null)} />}
+      {ritual === "set" && <RitualSetmanal day={day} global={global} allData={allData} matchState={matchState} calEvents={calEvents} persistDates={persistDates} onClose={() => setRitual(null)} />}
 
       {thursday && (
         <div style={S.thursdayOverlay}>

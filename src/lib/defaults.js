@@ -6,7 +6,8 @@ export const defaultDay = () => ({
   date: todayKey(),
   habits: {}, // { [habitId]: boolean } — HABIT_POOL ids, never carried forward
   customHabits: [], // [{ id, emoji, label, topic }] — user-added, appended to HABIT_POOL for the day
-  tasks: [], // [{ id, label, topic, hint, done }] — first 3 are "Prioritats d'avui"
+  tasks: [], // [{ id, label, topic, hint, done, priority }] — priority:true items are
+  // "Prioritats d'avui" (max 3), independent from the unlimited "Tasques" list
   mood: null, // 1–5 | null
   energy: null, // 1–5 | null
   qa: {}, // { [quickActionId]: boolean } — which quick actions were used today
