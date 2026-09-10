@@ -33,5 +33,5 @@ export async function importRefereeReport(file) {
   });
   const data = await res.json();
   if (!res.ok) return { ok: false, error: data.error || `Error ${res.status}` };
-  return { ok: true, parsed: data.parsed, skipped: data.skipped };
+  return { ok: true, parsed: data.parsed, skipped: data.skipped, rubricUpdated: data.rubricUpdated, rubricUpdateError: data.rubricUpdateError, rubricError: data.rubricError };
 }

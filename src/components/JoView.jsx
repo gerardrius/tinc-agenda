@@ -26,7 +26,12 @@ function ImportReportButton({ onImported }) {
     if (result.ok) {
       const p = result.parsed;
       const prefix = result.skipped ? "Ja importat abans: " : "";
-      setStatus({ ok: true, message: `${prefix}${p.home_team} - ${p.away_team} (${p.match_date}): puntuació ${p.final_score ?? "—"}.` });
+      const rubricNote = result.rubricError
+        ? ` Rúbrica no llegida (${result.rubricError}).`
+        : result.skipped
+        ? (result.rubricUpdated ? " Rúbrica actualitzada." : result.rubricUpdateError ? ` Rúbrica no actualitzada (${result.rubricUpdateError}).` : "")
+        : "";
+      setStatus({ ok: true, message: `${prefix}${p.home_team} - ${p.away_team} (${p.match_date}): puntuació ${p.final_score ?? "—"}.${rubricNote}` });
       onImported();
     } else {
       setStatus({ ok: false, message: result.error });

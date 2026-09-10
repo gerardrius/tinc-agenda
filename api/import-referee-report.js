@@ -7,6 +7,7 @@
 // match on some future report variant never loses the underlying data.
 import "./_pdf-polyfills.js";
 import { getBigQuery } from "./_bigquery.js";
+import { extractRubric } from "./_rubric.js";
 import { PDFParse } from "pdf-parse";
 
 const PROJECT = "project-d225e115-18b7-433d-ae0";
@@ -95,10 +96,30 @@ export default async function handler(req, res) {
     const parsed = parseReport(text);
     const { result, ...row } = parsed;
 
+    // Rubric reading (Claude PDF vision) is best-effort — a report still
+    // gets its objective match data recorded even if this fails (e.g. no
+    // API credit yet, or a transient error), rather than losing the whole
+    // import over the enrichment step.
+    let rubric = null, rubricError = null;
+    try {
+      rubric = await extractRubric(fileBase64);
+    } catch (e) {
+      rubricError = e.message || "Error llegint la rúbrica";
+    }
+    const SECTION_TO_COLUMN = { "Condición Física Y Posicionamiento": "rubric_physical", "Actuación Técnica": "rubric_technical", "Actuación Disciplinaria": "rubric_disciplinary", "Manejo": "rubric_management", "Personalidad": "rubric_personality", "Trabajo En Equipo": "rubric_teamwork" };
+    const rubricColumns = {};
+    if (rubric) {
+      rubric.sectionAverages.forEach(({ section, average }) => { rubricColumns[SECTION_TO_COLUMN[section]] = average; });
+      rubricColumns.rubric_items = rubric.items;
+      rubricColumns.rubric_section_averages = rubric.sectionAverages;
+    }
+
     const bigquery = getBigQuery();
 
     // Same fixture + date already imported (e.g. the same PDF picked twice,
-    // or a re-export) — skip instead of double-counting it in the average.
+    // a re-export, or a deliberate re-upload to backfill rubric scores that
+    // failed the first time) — update the rubric columns on the existing
+    // row instead of inserting a duplicate.
     const [existing] = await bigquery.query({
       query: `
         SELECT 1 FROM \`${PROJECT}.refereeing.match_reports\`
@@ -108,15 +129,36 @@ export default async function handler(req, res) {
       params: { matchDate: row.match_date, homeTeam: row.home_team, awayTeam: row.away_team },
     });
     if (existing.length) {
-      res.status(200).json({ ok: true, skipped: true, parsed: { ...row, raw_text: undefined, result } });
+      let rubricUpdated = false, rubricUpdateError = null;
+      if (rubric) {
+        try {
+          await bigquery.query({
+            query: `
+              UPDATE \`${PROJECT}.refereeing.match_reports\`
+              SET rubric_physical = @rubric_physical, rubric_technical = @rubric_technical,
+                  rubric_disciplinary = @rubric_disciplinary, rubric_management = @rubric_management,
+                  rubric_personality = @rubric_personality, rubric_teamwork = @rubric_teamwork,
+                  rubric_items = @rubric_items, rubric_section_averages = @rubric_section_averages
+              WHERE match_date = @matchDate AND home_team = @homeTeam AND away_team = @awayTeam
+            `,
+            params: { ...rubricColumns, matchDate: row.match_date, homeTeam: row.home_team, awayTeam: row.away_team },
+          });
+          rubricUpdated = true;
+        } catch (e) {
+          // BigQuery can't UPDATE a row still in the streaming-insert buffer
+          // (up to ~90 min after insert) — surface that plainly instead of failing.
+          rubricUpdateError = e.message || "No s'ha pogut actualitzar la rúbrica (probablement el registre és massa recent)";
+        }
+      }
+      res.status(200).json({ ok: true, skipped: true, rubricUpdated, rubricUpdateError, rubricError, parsed: { ...row, raw_text: undefined, result } });
       return;
     }
 
     await bigquery.dataset("refereeing", { projectId: PROJECT }).table("match_reports").insert([
-      { ...row, source_file: fileName || null, imported_at: new Date().toISOString() },
+      { ...row, ...rubricColumns, source_file: fileName || null, imported_at: new Date().toISOString() },
     ]);
 
-    res.status(200).json({ ok: true, skipped: false, parsed: { ...row, raw_text: undefined, result } });
+    res.status(200).json({ ok: true, skipped: false, rubricError, parsed: { ...row, raw_text: undefined, result } });
   } catch (e) {
     res.status(500).json({ error: e.errors ? JSON.stringify(e.errors) : (e.message || "Error important l'informe") });
   }
