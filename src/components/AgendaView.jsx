@@ -164,7 +164,7 @@ function WeekGrid({ weekStart, calEvents, matchState, focusDate, onSelectDay }) 
 const DURATIONS = [30, 60, 90, 120];
 const MATCH_LETTERS = ["A", "B", "C"];
 
-function CreateEventSheet({ slot, date, onClose, onCreate }) {
+export function CreateEventSheet({ slot, date, onClose, onCreate }) {
   const initial = new Date(date);
   initial.setHours(Math.floor(slot), (slot % 1) * 60, 0, 0);
   const toHHMM = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -212,63 +212,58 @@ function CreateEventSheet({ slot, date, onClose, onCreate }) {
 
   return (
     <Sheet onClose={onClose} maxHeight="82%">
-      <div style={{ display: "flex", flexDirection: "column", maxHeight: "72vh" }}>
-        <div style={{ overflowY: "auto", paddingBottom: 6 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div style={{ fontSize: 19, fontWeight: 600 }}>Nou event</div>
-            <SheetCloseBtn onClose={onClose} />
-          </div>
-
-          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-            {MATCH_LETTERS.map((l) => (
-              <button key={l} onClick={() => applyMatchPreset(l)} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>⚽ Partit {l}</button>
-            ))}
-          </div>
-
-          <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Nom de l'event" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 10.5, color: COLORS.textMuted, marginBottom: 3 }}>Inici</div>
-              <input type="time" style={{ ...S.inp, fontSize: 14 }} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 10.5, color: COLORS.textMuted, marginBottom: 3 }}>Final</div>
-              <input type="time" style={{ ...S.inp, fontSize: 14 }} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-            {DURATIONS.map((d) => (
-              <button key={d} onClick={() => applyDuration(d)} style={{
-                flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-                border: `1px solid ${durationMin === d ? COLORS.accent : COLORS.border}`,
-                background: durationMin === d ? "#fbf2ea" : "#fdfbf9", color: durationMin === d ? COLORS.accent : COLORS.textSec,
-              }}>{d} min</button>
-            ))}
-          </div>
-
-          <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Lloc (opcional)" value={location} onChange={(e) => setLocation(e.target.value)} />
-          <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Enllaç (opcional)" value={link} onChange={(e) => setLink(e.target.value)} />
-
-          <button onClick={() => setTopic(nextTopic(topic))} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", marginBottom: 4 }}>
-            <TopicPill topic={topicObj} />
-          </button>
-        </div>
-
-        <button onClick={submit} disabled={!title.trim() || saving} style={{ ...S.pBtn, width: "100%", textAlign: "center", opacity: title.trim() ? 1 : 0.5, marginTop: 12, marginBottom: 0, flexShrink: 0 }}>
-          {saving ? "Creant…" : "Crear event"}
-        </button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontSize: 19, fontWeight: 600 }}>Nou event</div>
+        <SheetCloseBtn onClose={onClose} />
       </div>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        {MATCH_LETTERS.map((l) => (
+          <button key={l} onClick={() => applyMatchPreset(l)} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>⚽ Partit {l}</button>
+        ))}
+      </div>
+
+      <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Nom de l'event" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10.5, color: COLORS.textMuted, marginBottom: 3 }}>Inici</div>
+          <input type="time" style={{ ...S.inp, fontSize: 14 }} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10.5, color: COLORS.textMuted, marginBottom: 3 }}>Final</div>
+          <input type="time" style={{ ...S.inp, fontSize: 14 }} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        {DURATIONS.map((d) => (
+          <button key={d} onClick={() => applyDuration(d)} style={{
+            flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+            border: `1px solid ${durationMin === d ? COLORS.accent : COLORS.border}`,
+            background: durationMin === d ? "#fbf2ea" : "#fdfbf9", color: durationMin === d ? COLORS.accent : COLORS.textSec,
+          }}>{d} min</button>
+        ))}
+      </div>
+
+      <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Lloc (opcional)" value={location} onChange={(e) => setLocation(e.target.value)} />
+      <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Enllaç (opcional)" value={link} onChange={(e) => setLink(e.target.value)} />
+
+      <button onClick={() => setTopic(nextTopic(topic))} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", marginBottom: 14 }}>
+        <TopicPill topic={topicObj} />
+      </button>
+
+      <button onClick={submit} disabled={!title.trim() || saving} style={{ ...S.pBtn, width: "100%", textAlign: "center", opacity: title.trim() ? 1 : 0.5, margin: 0, position: "sticky", bottom: 0 }}>
+        {saving ? "Creant…" : "Crear event"}
+      </button>
     </Sheet>
   );
 }
 
-export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, matchState, googleConnected, onCreateEvent }) {
+export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, matchState, googleConnected, onRequestCreateSlot }) {
   const [agView, setAgView] = useState("day");
   const [focusDate, setFocusDate] = useState(() => new Date());
   const [selectedIdx, setSelectedIdx] = useState(null);
-  const [creatingSlot, setCreatingSlot] = useState(null);
 
   const selDk = dateKey(focusDate);
   const dayEvents = (calEvents || []).filter((e) => e.start?.startsWith(selDk));
@@ -323,7 +318,7 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
 
       {calEvents && agView === "day" && (
         <div style={{ marginTop: 14 }} {...swipeDay}>
-          <DayTimeline events={dayEvents} onSelect={setSelectedIdx} selectedIdx={selectedIdx} onCreateSlot={setCreatingSlot} isToday={selDk === dateKey(new Date())} />
+          <DayTimeline events={dayEvents} onSelect={setSelectedIdx} selectedIdx={selectedIdx} onCreateSlot={(hour) => onRequestCreateSlot({ slot: hour, date: focusDate })} isToday={selDk === dateKey(new Date())} />
           {dayEvents.length === 0 && <p style={{ ...S.muted, textAlign: "center", marginTop: -6, marginBottom: 10 }}>Cap event {selDk === dateKey(new Date()) ? "avui" : "aquest dia"}. Toca l'horari per afegir-ne un.</p>}
 
           {selectedEvent && (() => {
@@ -365,9 +360,6 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
         </div>
       )}
 
-      {creatingSlot != null && (
-        <CreateEventSheet slot={creatingSlot} date={focusDate} onClose={() => setCreatingSlot(null)} onCreate={onCreateEvent} />
-      )}
     </div>
   );
 }

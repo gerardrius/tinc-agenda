@@ -34,8 +34,12 @@ export const WHEEL_AXES = [
 // Task/habit topic pills — cycle order per README ritual step 3.
 export const TOPICS = [
   { id: "arbitratge", emoji: "⚽", label: "Arbitratge", color: COLORS.domainRef },
-  { id: "relacions", emoji: "💛", label: "Relacions", color: COLORS.domainRelacions },
+  { id: "relacions", emoji: "💛", label: "Muntsa", color: COLORS.domainRelacions },
+  { id: "familia", emoji: "❤️", label: "Família", color: COLORS.alert },
+  { id: "amics", emoji: "🤗", label: "Amics", color: COLORS.accent },
   { id: "son", emoji: "💤", label: "Son", color: COLORS.domainSon },
+  { id: "entrenaments", emoji: "💪", label: "Entrenaments", color: COLORS.domainSalut },
+  { id: "cultivacio", emoji: "🧠", label: "Cultivació mental", color: COLORS.ref },
   { id: "finances", emoji: "💰", label: "Finances", color: COLORS.domainFinances },
   { id: "feina", emoji: "💼", label: "Feina", color: COLORS.domainFeina },
   { id: "salut", emoji: "🏃", label: "Salut", color: COLORS.domainSalut },

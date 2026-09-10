@@ -5,6 +5,7 @@ import { activeHabits } from "../lib/taskRules";
 import { fixtureText, roleLabel } from "../lib/matchCycle";
 import { S, COLORS } from "../lib/styles";
 import { Card, Lbl, Checkbox, TopicPill, ProgressArc } from "./ui";
+import { syncGarminNow } from "../lib/sleepMapApi";
 
 function QuickPill({ emoji, label, done, onClick }) {
   return (
@@ -46,9 +47,18 @@ function daysUntil(startISO) {
   return Math.round((start - now) / 86400000);
 }
 
-export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, persist, saveGlobal, matchState, calEvents, bannerToShow, onOpenRitual, onDismissBanner, onOpenFull, onOpenSheet }) {
+export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSleep, u, toggleHabit, persist, saveGlobal, matchState, calEvents, bannerToShow, onOpenRitual, onDismissBanner, onOpenFull, onOpenSheet }) {
   const [focusId, setFocusId] = useState(null);
   const [overflowId, setOverflowId] = useState(null);
+  const [syncingGarmin, setSyncingGarmin] = useState(false);
+
+  const syncGarmin = async () => {
+    setSyncingGarmin(true);
+    const result = await syncGarminNow();
+    onRefreshGarminSleep();
+    setSyncingGarmin(false);
+    if (!result.ok) window.alert(result.error || "Error sincronitzant amb Garmin.");
+  };
   const [newHabitText, setNewHabitText] = useState("");
   const [pickingMood, setPickingMood] = useState(false);
 
@@ -154,7 +164,7 @@ export function TodayView({ day, global, allData, garminSleep, u, toggleHabit, p
         {canAddPriority && <QuickPill emoji="🎯" label="Prioritat" onClick={addPriority} />}
         <QuickPill emoji="➕" label="Tasca" done={qa.tasca} onClick={addTask} />
         {!day.mood && <QuickPill emoji="😄" label="Registrar ànim" onClick={() => setPickingMood(!pickingMood)} />}
-        {garminMissing && <QuickPill emoji="💤" label="Son d'ahir" onClick={() => onOpenFull("son")} />}
+        {garminMissing && <QuickPill emoji={syncingGarmin ? "⏳" : "🔄"} label={syncingGarmin ? "Sincronitzant…" : "Sincronitzar son"} onClick={syncGarmin} />}
         <QuickPill emoji="💰" label="Despesa" done={qa.expense} onClick={logExpense} />
         <QuickPill emoji="👥" label="Activitat social" done={qa.social} onClick={logSocial} />
       </div>

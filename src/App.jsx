@@ -13,7 +13,7 @@ import { useGarminSleepByDate } from "./lib/sleepMapApi";
 import { deriveMatchState, detectConfirmation } from "./lib/matchCycle";
 import { AuthScreen } from "./components/AuthScreen";
 import { TodayView } from "./components/TodayView";
-import { AgendaView } from "./components/AgendaView";
+import { AgendaView, CreateEventSheet } from "./components/AgendaView";
 import { SetmanaView, DomainSheet } from "./components/SetmanaView";
 import { JoView } from "./components/JoView";
 import { SonFullScreen } from "./components/SonFullScreen";
@@ -54,6 +54,8 @@ export default function App() {
   const [full, setFull] = useState(null); // 'son' | 'fin' | null
   const [ritual, setRitual] = useState(null); // 'nit' | 'set' | null
   const [thursday, setThursday] = useState(null); // confirmed match info | null
+  const [creatingSlot, setCreatingSlot] = useState(null); // { slot, date } | null — Agenda's "tap empty timeline" sheet,
+  // rendered here (not inside AgendaView) so it isn't clipped by S.body's overflow:auto
 
   const prevMatchStateRef = useRef(null);
 
@@ -219,7 +221,7 @@ export default function App() {
     return () => clearInterval(id);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const garminSleep = useGarminSleepByDate();
+  const [garminSleep, refetchGarminSleep] = useGarminSleepByDate();
   const matchState = useMemo(() => deriveMatchState(calEvents), [calEvents]);
   const domainScores = useDomainScores(global, allData, garminSleep, matchState);
 
@@ -257,13 +259,13 @@ export default function App() {
       <div style={S.body}>
         {tab === "avui" && (
           <TodayView
-            day={day} global={global} allData={allData} garminSleep={garminSleep} u={u} toggleHabit={toggleHabit} persist={persist} saveGlobal={saveGlobal}
+            day={day} global={global} allData={allData} garminSleep={garminSleep} onRefreshGarminSleep={refetchGarminSleep} u={u} toggleHabit={toggleHabit} persist={persist} saveGlobal={saveGlobal}
             matchState={matchState} calEvents={calEvents} bannerToShow={bannerToShow} onOpenRitual={setRitual}
             onDismissBanner={dismissBanner} onOpenFull={setFull} onOpenSheet={setSheet}
           />
         )}
         {tab === "agenda" && (
-          <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} onCreateEvent={handleCreateEvent} />
+          <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} onRequestCreateSlot={setCreatingSlot} />
         )}
         {tab === "setmana" && <SetmanaView day={day} global={global} allData={allData} garminSleep={garminSleep} domainScores={domainScores} onOpenSheet={setSheet} onOpenFull={setFull} />}
         {tab === "jo" && <JoView day={day} global={global} allData={allData} garminSleep={garminSleep} onOpenFull={setFull} />}
@@ -296,6 +298,7 @@ export default function App() {
       {full === "fin" && <FinancesFullScreen onClose={() => setFull(null)} />}
       {ritual === "nit" && <RitualNocturna day={day} allData={allData} calEvents={calEvents} persistDates={persistDates} onClose={() => setRitual(null)} />}
       {ritual === "set" && <RitualSetmanal day={day} global={global} allData={allData} matchState={matchState} calEvents={calEvents} persistDates={persistDates} onClose={() => setRitual(null)} />}
+      {creatingSlot && <CreateEventSheet slot={creatingSlot.slot} date={creatingSlot.date} onClose={() => setCreatingSlot(null)} onCreate={handleCreateEvent} />}
 
       {thursday && (
         <div style={S.thursdayOverlay}>

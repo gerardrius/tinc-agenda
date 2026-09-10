@@ -34,13 +34,33 @@ function getGarminDailyCached() {
   if (!_cachedGarminPromise) _cachedGarminPromise = fetchGarminDaily();
   return _cachedGarminPromise;
 }
+// Drops the cached /api/garmin response — call after triggering a manual
+// Garmin sync (Avui's "🔄 Sincronitzar Garmin" button) so the fresh night
+// shows up without a full app reload.
+export function invalidateGarminDailyCache() {
+  _cachedGarminPromise = null;
+}
+
+// Triggers api/sync-garmin-now.js (a manual pull from Garmin Connect, for
+// "I just woke up, don't make me wait for the 04:00 job") and, on success,
+// invalidates the cached daily-metrics response so the next read is fresh.
+export async function syncGarminNow() {
+  const res = await fetch("/api/sync-garmin-now", { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || `Error ${res.status}` };
+  invalidateGarminDailyCache();
+  return { ok: true, ...data };
+}
 
 // { [calendar_date]: { hours, score, start, end, restingHr, hrvAvg,
 // trainingReadiness } } — merged from both sources, with the fresh BigQuery
 // feed winning per-date over the older (but location-aware) Timeline feed
-// wherever it has data. null while loading, {} on total failure.
+// wherever it has data. null while loading, {} on total failure. `refetch`
+// re-runs both fetches (bypassing the module cache) — pass it down to
+// wherever a manual sync button lives.
 export function useGarminSleepByDate() {
   const [byDate, setByDate] = useState(null);
+  const [version, setVersion] = useState(0);
   useEffect(() => {
     let cancelled = false;
     Promise.allSettled([getSleepDataCached(), getGarminDailyCached()]).then(([sleepRes, garminRes]) => {
@@ -72,6 +92,6 @@ export function useGarminSleepByDate() {
       else setByDate(m);
     });
     return () => { cancelled = true; };
-  }, []);
-  return byDate;
+  }, [version]);
+  return [byDate, () => setVersion((v) => v + 1)];
 }

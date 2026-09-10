@@ -15,6 +15,10 @@ export const uid = () => Date.now().toString(36) + Math.random().toString(36).sl
 export function rpeC(n) { return n <= 3 ? "#22c55e" : n <= 5 ? "#eab308" : n <= 7 ? "#f97316" : "#ef4444"; }
 export function habitColor(score) { return score === -1 ? "#161a1e" : score === 0 ? "#1a1d21" : score <= 2 ? "#14532d" : score <= 4 ? "#166534" : score <= 5 ? "#22c55e" : "#4ade80"; }
 export function fmtDate(d) { return d.toLocaleDateString("ca-ES", { weekday: "long", day: "numeric", month: "long" }); }
+// Real weekday abbreviation for a YYYY-MM-DD key (e.g. "dc.") — NOT a fixed
+// Monday-Sunday array indexed by position, which mislabels any trailing-N-
+// days window that doesn't happen to start on a Monday.
+export function weekdayShort(dk) { return new Date(dk + "T12:00:00").toLocaleDateString("ca-ES", { weekday: "short" }); }
 export function fmtTime(s) { if(!s)return""; try{return new Date(s).toLocaleTimeString("ca-ES",{hour:"2-digit",minute:"2-digit"});}catch{return s.slice(11,16)||"";} }
 // Consecutive prior days (not counting today) where `habits[habitId]` was
 // true, walking backward from yesterday until the first miss or missing day.

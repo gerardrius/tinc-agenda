@@ -2,7 +2,7 @@ import { useState } from "react";
 import { S, COLORS } from "../lib/styles";
 import { Card, Segmented } from "./ui";
 import { last7Keys } from "../lib/domainStats";
-import { todayKey, localDateKey } from "../lib/utils";
+import { todayKey, localDateKey, weekdayShort } from "../lib/utils";
 import { SleepMapSec } from "./SleepMapSec";
 
 function bandColor(score) {
@@ -49,7 +49,6 @@ function MonthlyTrend({ garminSleep }) {
 }
 
 const STAGE_COLORS = { deep: COLORS.ref, light: COLORS.good, rem: COLORS.accent };
-const weekdayShort = (dk) => new Date(dk + "T12:00:00").toLocaleDateString("ca-ES", { weekday: "short" });
 const dayAbbr = (dk) => weekdayShort(dk).replace(".", "").slice(0, 1).toUpperCase();
 
 export function SonFullScreen({ garminSleep, matchState, onClose }) {
