@@ -2,7 +2,7 @@ import { useState } from "react";
 import { S, COLORS } from "../lib/styles";
 import { Card, Segmented } from "./ui";
 import { last7Keys } from "../lib/domainStats";
-import { todayKey, localDateKey, weekdayShort } from "../lib/utils";
+import { todayKey, localDateKey, weekdayShort, fmtHours } from "../lib/utils";
 import { SleepMapSec } from "./SleepMapSec";
 
 function bandColor(score) {
@@ -15,11 +15,6 @@ function fmtClock(iso) {
   if (!iso) return "—";
   const t = iso.split("T")[1];
   return t ? t.slice(0, 5) : "—";
-}
-function hToHM(h) {
-  if (h == null) return "—";
-  const hh = Math.floor(h), mm = Math.round((h - hh) * 60);
-  return `${hh}h ${mm}m`;
 }
 
 function MonthlyTrend({ garminSleep }) {
@@ -88,7 +83,7 @@ export function SonFullScreen({ garminSleep, matchState, onClose }) {
             <div style={{ marginBottom: 18 }}>
               <div style={{ fontSize: 11.5, color: COLORS.textSec }}>Ahir a la nit</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
-                <span style={{ fontSize: 44, fontWeight: 600, letterSpacing: "-0.05em" }}>{last?.hours != null ? hToHM(last.hours) : "—"}</span>
+                <span style={{ fontSize: 44, fontWeight: 600, letterSpacing: "-0.05em" }}>{last?.hours != null ? fmtHours(last.hours) : "—"}</span>
                 <span style={{ fontSize: 15, fontWeight: 600, color: bandColor(last?.score) }}>{last?.score ?? "—"}</span>
               </div>
               <div style={{ fontSize: 12.5, color: COLORS.textSec, marginTop: 2 }}>{fmtClock(last?.start)} → {fmtClock(last?.end)}</div>
@@ -130,12 +125,12 @@ export function SonFullScreen({ garminSleep, matchState, onClose }) {
             <div style={S.g2}>
               <div style={S.mini}>
                 <div style={{ fontSize: 11.5, color: COLORS.textSec }}>Millor nit</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: COLORS.good }}>{best ? hToHM(best.hours) : "—"}</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: COLORS.good }}>{best ? fmtHours(best.hours) : "—"}</div>
                 <div style={{ fontSize: 10.5, color: COLORS.textFaint }}>{best ? weekdayShort(best.dk) : ""}</div>
               </div>
               <div style={S.mini}>
                 <div style={{ fontSize: 11.5, color: COLORS.textSec }}>Pitjor nit</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: COLORS.alert }}>{worst ? hToHM(worst.hours) : "—"}</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: COLORS.alert }}>{worst ? fmtHours(worst.hours) : "—"}</div>
                 <div style={{ fontSize: 10.5, color: COLORS.textFaint }}>{worst ? weekdayShort(worst.dk) : ""}</div>
               </div>
               <div style={S.mini}>

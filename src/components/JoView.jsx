@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { S, COLORS } from "../lib/styles";
 import { Card } from "./ui";
 import { last7Keys } from "../lib/domainStats";
-import { todayKey } from "../lib/utils";
+import { todayKey, fmtHours } from "../lib/utils";
 import { useFinances } from "../lib/financesApi";
 import { useRefereeingMatches, importRefereeReport, syncRefereeReportsFromDrive } from "../lib/refereeingApi";
 
@@ -126,7 +126,7 @@ export function JoView({ global, allData, garminSleep, onOpenFull }) {
   const scores = dates.map((dk) => garminSleep?.[dk]?.score).filter((s) => s != null);
   const hours = dates.map((dk) => garminSleep?.[dk]?.hours).filter((h) => h != null);
   const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : "—";
-  const avgHours = hours.length ? (hours.reduce((a, b) => a + b, 0) / hours.length).toFixed(1) : "—";
+  const avgHours = hours.length ? fmtHours(hours.reduce((a, b) => a + b, 0) / hours.length) : "—";
   const yesterday = garminSleep?.[todayKey()]?.score ?? "—";
 
   const matchHistory = [...scoredMatches].sort((a, b) => (a.match_date < b.match_date ? -1 : 1));
@@ -147,7 +147,7 @@ export function JoView({ global, allData, garminSleep, onOpenFull }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, textAlign: "center", marginBottom: 10 }}>
           <div><div style={{ fontSize: 10.5, color: COLORS.textSec }}>Puntuació mitjana</div><div style={{ fontSize: 24, fontWeight: 600, color: COLORS.warn }}>{avgScore}</div></div>
-          <div><div style={{ fontSize: 10.5, color: COLORS.textSec }}>Hores mitjanes</div><div style={{ fontSize: 24, fontWeight: 600 }}>{avgHours}h</div></div>
+          <div><div style={{ fontSize: 10.5, color: COLORS.textSec }}>Hores mitjanes</div><div style={{ fontSize: 24, fontWeight: 600 }}>{avgHours}</div></div>
           <div><div style={{ fontSize: 10.5, color: COLORS.textSec }}>Ahir</div><div style={{ fontSize: 24, fontWeight: 600 }}>{yesterday}</div></div>
         </div>
       </button>

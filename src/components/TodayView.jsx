@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { RITUAL_BANNERS, PREP_CHECKLISTS, topicById, nextTopic } from "../lib/constants";
-import { todayKey, fmtDate, fmtTime, uid, computeStreak } from "../lib/utils";
+import { todayKey, fmtDate, fmtTime, fmtHours, uid, computeStreak } from "../lib/utils";
 import { activeHabits } from "../lib/taskRules";
 import { fixtureText, roleLabel } from "../lib/matchCycle";
 import { S, COLORS } from "../lib/styles";
@@ -47,7 +47,7 @@ function daysUntil(startISO) {
   return Math.round((start - now) / 86400000);
 }
 
-export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSleep, u, toggleHabit, persist, saveGlobal, matchState, calEvents, bannerToShow, onOpenRitual, onDismissBanner, onOpenFull, onOpenSheet }) {
+export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSleep, u, toggleHabit, persist, saveGlobal, matchState, calEvents, bannerToShow, onOpenRitual, onDismissBanner, onOpenFull, onOpenSheet, onRequestCreateSlot }) {
   const [focusId, setFocusId] = useState(null);
   const [overflowId, setOverflowId] = useState(null);
   const [syncingGarmin, setSyncingGarmin] = useState(false);
@@ -85,16 +85,15 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
   const priorities = tasks.filter((t) => t.priority);
   const others = tasks.filter((t) => !t.priority);
   const canAddPriority = priorities.length < 3;
-  const addTask = () => {
-    const id = uid();
-    persist({ ...day, tasks: [...tasks, { id, label: "", topic: "arbitratge", hint: "", done: false, priority: false }], qa: { ...day.qa, tasca: true } });
-    setFocusId(id);
-  };
-  const addPriority = () => {
-    if (!canAddPriority) return;
-    const id = uid();
-    persist({ ...day, tasks: [...tasks, { id, label: "", topic: "arbitratge", hint: "", done: false, priority: true }], qa: { ...day.qa, tasca: true } });
-    setFocusId(id);
+  // Opens the Nou event sheet (App-level) pre-armed to link the new
+  // calendar event to a task it'll create on save — see App.jsx's
+  // handleCreateEventForSheet. A quick "now, rounded to the half hour"
+  // default slot; the sheet's own time fields are there to adjust it.
+  const openTaskEventSheet = (isPriority) => {
+    if (isPriority && !canAddPriority) return;
+    const now = new Date();
+    const slot = now.getHours() + (now.getMinutes() >= 30 ? 0.5 : 0);
+    onRequestCreateSlot({ slot, date: now, linkTask: { id: uid(), priority: isPriority } });
   };
   const setTaskField = (id, field, val) => u("tasks", null, tasks.map((t) => (t.id === id ? { ...t, [field]: val } : t)));
   const removeTask = (id) => u("tasks", null, tasks.filter((t) => t.id !== id));
@@ -161,8 +160,8 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
 
       {/* Quick actions */}
       <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "2px 2px 10px", width: "max-content", maxWidth: "100%" }}>
-        {canAddPriority && <QuickPill emoji="🎯" label="Prioritat" onClick={addPriority} />}
-        <QuickPill emoji="➕" label="Tasca" done={qa.tasca} onClick={addTask} />
+        {canAddPriority && <QuickPill emoji="🎯" label="Prioritat" onClick={() => openTaskEventSheet(true)} />}
+        <QuickPill emoji="➕" label="Tasca" done={qa.tasca} onClick={() => openTaskEventSheet(false)} />
         {!day.mood && <QuickPill emoji="😄" label="Registrar ànim" onClick={() => setPickingMood(!pickingMood)} />}
         {garminMissing && <QuickPill emoji={syncingGarmin ? "⏳" : "🔄"} label={syncingGarmin ? "Sincronitzant…" : "Sincronitzar son"} onClick={syncGarmin} />}
         <QuickPill emoji="💰" label="Despesa" done={qa.expense} onClick={logExpense} />
@@ -288,7 +287,7 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
         )}
         {priorities.length === 0 && <p style={S.muted}>Cap prioritat. Afegeix-ne amb el 🎯 Prioritat de dalt.</p>}
         {canAddPriority && (
-          <button onClick={addPriority} style={{ width: "100%", minHeight: 40, marginTop: 8, border: "1px dashed #ded6cd", background: "none", borderRadius: 8, color: COLORS.textSec, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
+          <button onClick={() => openTaskEventSheet(true)} style={{ width: "100%", minHeight: 40, marginTop: 8, border: "1px dashed #ded6cd", background: "none", borderRadius: 8, color: COLORS.textSec, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
             ➕ Afegir prioritat
           </button>
         )}
@@ -321,7 +320,7 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
           </div>
         )}
         {others.length === 0 && <p style={S.muted}>Cap tasca. Afegeix-ne amb el ➕ Tasca de dalt.</p>}
-        <button onClick={addTask} style={{ width: "100%", minHeight: 40, marginTop: 8, border: "1px dashed #ded6cd", background: "none", borderRadius: 8, color: COLORS.textSec, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
+        <button onClick={() => openTaskEventSheet(false)} style={{ width: "100%", minHeight: 40, marginTop: 8, border: "1px dashed #ded6cd", background: "none", borderRadius: 8, color: COLORS.textSec, fontSize: 12.5, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>
           ➕ Afegir tasca
         </button>
       </Card>
@@ -332,7 +331,7 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
             <div style={{ fontSize: 11.5, color: COLORS.textSec, marginBottom: 6 }}>Son d'ahir · Garmin</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
               <span style={{ fontSize: 26, fontWeight: 600 }}>{lastNightSleep?.score ?? "—"}</span>
-              <span style={{ fontSize: 12, color: COLORS.textSec }}>{lastNightSleep?.hours ? `${lastNightSleep.hours.toFixed(1)}h` : ""}</span>
+              <span style={{ fontSize: 12, color: COLORS.textSec }}>{lastNightSleep?.hours ? fmtHours(lastNightSleep.hours) : ""}</span>
             </div>
             <div style={{ marginTop: 6 }}><div style={{ height: 5, borderRadius: 99, background: COLORS.track }}><div style={{ height: 5, borderRadius: 99, background: COLORS.warn, width: `${lastNightSleep?.score || 0}%` }} /></div></div>
           </button>

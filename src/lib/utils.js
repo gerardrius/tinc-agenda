@@ -19,6 +19,13 @@ export function fmtDate(d) { return d.toLocaleDateString("ca-ES", { weekday: "lo
 // Monday-Sunday array indexed by position, which mislabels any trailing-N-
 // days window that doesn't happen to start on a Monday.
 export function weekdayShort(dk) { return new Date(dk + "T12:00:00").toLocaleDateString("ca-ES", { weekday: "short" }); }
+// Hours-as-decimal (7.7) into "7h42" — easier to read at a glance than a
+// fraction of an hour.
+export function fmtHours(h) {
+  if (h == null) return "—";
+  const hh = Math.floor(h), mm = Math.round((h - hh) * 60);
+  return `${hh}h${String(mm).padStart(2, "0")}`;
+}
 export function fmtTime(s) { if(!s)return""; try{return new Date(s).toLocaleTimeString("ca-ES",{hour:"2-digit",minute:"2-digit"});}catch{return s.slice(11,16)||"";} }
 // Consecutive prior days (not counting today) where `habits[habitId]` was
 // true, walking backward from yesterday until the first miss or missing day.

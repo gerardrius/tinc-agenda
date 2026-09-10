@@ -4,6 +4,7 @@ import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { fetchSleepData, invalidateSleepDataCache } from "../lib/sleepMapApi";
 import { Card, Lbl, Sheet, SheetCloseBtn } from "./ui";
 import { S, COLORS } from "../lib/styles";
+import { fmtHours } from "../lib/utils";
 
 const ACCENT = "#818cf8"; // same indigo used by the old manual sleep-quality chips
 
@@ -236,7 +237,7 @@ export function SleepMapSec() {
             <div style={{ fontSize: 10, color: "#8a7f74" }}>{n ? `${n} ${n === 1 ? "nit" : "nits"}` : (k === UNRESOLVED ? "sense dades de localització" : "sense nits encara")}</div>
           </div>
           {n > 0 && (<div style={{ textAlign: "right", fontSize: 11, color: "#8a7f74" }}>
-            <div>puntuació <strong style={{ color: "#2a2420" }}>{Math.round(scoreAvg)}</strong> · {hoursAvg.toFixed(1)}h</div>
+            <div>puntuació <strong style={{ color: "#2a2420" }}>{Math.round(scoreAvg)}</strong> · {fmtHours(hoursAvg)}</div>
             {rangeStart && rangeEnd && <div>{rangeStart}–{rangeEnd}</div>}
           </div>)}
         </button>
@@ -261,7 +262,7 @@ export function SleepMapSec() {
               <span style={{ fontSize: 12.5, color: COLORS.textSec }}>{n.calendar_date}</span>
               <span style={{ width: 8, height: 8, borderRadius: 99, background: scoreColor(n.sleep_score_overall), display: "inline-block" }} />
               <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5, fontWeight: 500 }}>{n.sleep_score_overall ?? "—"}</span>
-              <span style={{ fontSize: 12.5, textAlign: "right", width: 52 }}>{n.sleep_hours != null ? `${n.sleep_hours.toFixed(1)}h` : "—"}</span>
+              <span style={{ fontSize: 12.5, textAlign: "right", width: 52 }}>{fmtHours(n.sleep_hours)}</span>
             </div>
           ))}
         </Card>

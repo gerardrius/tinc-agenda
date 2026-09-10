@@ -193,20 +193,38 @@ export default function App() {
   };
 
   // Creates a real event on the user's Google Calendar from the Agenda
-  // "tap an empty slot" flow, then refreshes so it shows up immediately.
-  const handleCreateEvent = async ({ summary, location, description, startISO, endISO, topic }) => {
+  // "tap an empty slot" flow (or from Avui's task/priority creation, see
+  // handleCreateEventForSheet below), then refreshes so it shows up
+  // immediately. Returns the created event's id.
+  const handleCreateEvent = async ({ summary, location, description, startISO, endISO, topic, taskId }) => {
     let token = googleAuth.getToken();
     if (!token) token = await googleAuth.connect();
+    let eventId;
     try {
-      await createEvent(token, { summary, location, description, startISO, endISO, topic, reminderMinutesBefore: [30] });
+      eventId = await createEvent(token, { summary, location, description, startISO, endISO, topic, taskId, reminderMinutesBefore: [30] });
     } catch (e) {
       if (e.code === 401) {
         googleAuth.forgetAccessToken();
         const freshToken = await googleAuth.connect();
-        await createEvent(freshToken, { summary, location, description, startISO, endISO, topic, reminderMinutesBefore: [30] });
+        eventId = await createEvent(freshToken, { summary, location, description, startISO, endISO, topic, taskId, reminderMinutesBefore: [30] });
       } else throw e;
     }
     await fetchCalendar();
+    return eventId;
+  };
+
+  // Wraps handleCreateEvent for the sheet rendered at this level: when the
+  // sheet was opened to create a task/priority (creatingSlot.linkTask set),
+  // also writes the task itself into today's tasks, tagged with the new
+  // event's id — Agenda then tints that event block by the task's done/
+  // overdue state (see AgendaView's eventState).
+  const handleCreateEventForSheet = async (payload) => {
+    const eventId = await handleCreateEvent(payload);
+    if (creatingSlot?.linkTask) {
+      const { priority } = creatingSlot.linkTask;
+      const newTask = { id: payload.taskId, label: payload.title, topic: payload.topic, hint: "", done: false, priority, calendarEventId: eventId };
+      persist({ ...day, tasks: [...(day.tasks || []), newTask] });
+    }
   };
 
   // Auto-sync on open (silent — no popup) whenever the user has ever
@@ -261,11 +279,11 @@ export default function App() {
           <TodayView
             day={day} global={global} allData={allData} garminSleep={garminSleep} onRefreshGarminSleep={refetchGarminSleep} u={u} toggleHabit={toggleHabit} persist={persist} saveGlobal={saveGlobal}
             matchState={matchState} calEvents={calEvents} bannerToShow={bannerToShow} onOpenRitual={setRitual}
-            onDismissBanner={dismissBanner} onOpenFull={setFull} onOpenSheet={setSheet}
+            onDismissBanner={dismissBanner} onOpenFull={setFull} onOpenSheet={setSheet} onRequestCreateSlot={setCreatingSlot}
           />
         )}
         {tab === "agenda" && (
-          <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} onRequestCreateSlot={setCreatingSlot} />
+          <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} onRequestCreateSlot={setCreatingSlot} day={day} />
         )}
         {tab === "setmana" && <SetmanaView day={day} global={global} allData={allData} garminSleep={garminSleep} domainScores={domainScores} onOpenSheet={setSheet} onOpenFull={setFull} />}
         {tab === "jo" && <JoView day={day} global={global} allData={allData} garminSleep={garminSleep} onOpenFull={setFull} />}
@@ -298,7 +316,13 @@ export default function App() {
       {full === "fin" && <FinancesFullScreen onClose={() => setFull(null)} />}
       {ritual === "nit" && <RitualNocturna day={day} allData={allData} calEvents={calEvents} persistDates={persistDates} onClose={() => setRitual(null)} />}
       {ritual === "set" && <RitualSetmanal day={day} global={global} allData={allData} matchState={matchState} calEvents={calEvents} persistDates={persistDates} onClose={() => setRitual(null)} />}
-      {creatingSlot && <CreateEventSheet slot={creatingSlot.slot} date={creatingSlot.date} onClose={() => setCreatingSlot(null)} onCreate={handleCreateEvent} />}
+      {creatingSlot && (
+        <CreateEventSheet
+          slot={creatingSlot.slot} date={creatingSlot.date}
+          initialTitle={creatingSlot.initialTitle} taskId={creatingSlot.linkTask?.id}
+          onClose={() => setCreatingSlot(null)} onCreate={handleCreateEventForSheet}
+        />
+      )}
 
       {thursday && (
         <div style={S.thursdayOverlay}>

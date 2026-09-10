@@ -10,6 +10,18 @@ const timelineHeight = (DAY_END - DAY_START) * PX_PER_HOUR;
 const hourOf = (iso) => { const d = new Date(iso); return d.getHours() + d.getMinutes() / 60; };
 const isTimed = (e) => e.start?.includes("T");
 const eventColor = (e) => (e.topic ? topicById(e.topic).color : calendarColor(e.title));
+
+// A calendar event created from a task/priority (see CreateEventSheet's
+// taskId) is tinted by that task's live state instead of its topic color:
+// done → green wash, not done but its end time has passed → red wash.
+function eventState(e, todayTasks, now) {
+  const task = e.taskId ? todayTasks?.find((t) => t.id === e.taskId) : null;
+  if (!task) return { color: eventColor(e), bg: eventColor(e) + "18" };
+  if (task.done) return { color: COLORS.good, bg: COLORS.good + "33" };
+  const endsAt = new Date(e.end || e.start);
+  if (endsAt < now) return { color: COLORS.alert, bg: COLORS.alert + "33" };
+  return { color: eventColor(e), bg: eventColor(e) + "18" };
+}
 const dateKey = localDateKey;
 const addDays = (d, n) => { const nd = new Date(d); nd.setDate(nd.getDate() + n); return nd; };
 
@@ -59,11 +71,12 @@ function layoutColumns(events) {
   });
 }
 
-function DayTimeline({ events, onSelect, selectedIdx, onCreateSlot, isToday }) {
+function DayTimeline({ events, onSelect, selectedIdx, onCreateSlot, isToday, todayTasks }) {
   const timed = events.filter(isTimed);
   const allDay = events.filter((e) => !isTimed(e));
   const laidOut = layoutColumns(timed);
-  const nowH = new Date().getHours() + new Date().getMinutes() / 60;
+  const now = new Date();
+  const nowH = now.getHours() + now.getMinutes() / 60;
   const showNow = isToday && nowH >= DAY_START && nowH <= DAY_END;
 
   // Tapping empty timeline space opens the create-event sheet at that hour;
@@ -97,14 +110,14 @@ function DayTimeline({ events, onSelect, selectedIdx, onCreateSlot, isToday }) {
         )}
         {laidOut.map(({ e, start, end, col, cols }, i) => {
           const title = e.title || "Event";
-          const color = eventColor(e);
+          const { color, bg } = eventState(e, todayTasks, now);
           const top = Math.max(0, (start - DAY_START) * PX_PER_HOUR);
           const h = Math.max(20, (Math.max(end, start + 0.25) - start) * PX_PER_HOUR - 4);
           const widthPct = 100 / cols;
           return (
             <button key={i} onClick={(ev) => { ev.stopPropagation(); onSelect(events.indexOf(e)); }} style={{
               position: "absolute", top, left: `${col * widthPct}%`, width: `calc(${widthPct}% - 4px)`, height: h,
-              background: color + "18", border: `1px solid ${color}`, borderRadius: 8, padding: "7px 9px",
+              background: bg, border: `1px solid ${color}`, borderRadius: 8, padding: "7px 9px",
               textAlign: "left", cursor: "pointer", fontFamily: "inherit", overflow: "hidden",
               outline: selectedIdx === events.indexOf(e) ? `2px solid ${color}` : "none",
             }}>
@@ -164,12 +177,12 @@ function WeekGrid({ weekStart, calEvents, matchState, focusDate, onSelectDay }) 
 const DURATIONS = [30, 60, 90, 120];
 const MATCH_LETTERS = ["A", "B", "C"];
 
-export function CreateEventSheet({ slot, date, onClose, onCreate }) {
+export function CreateEventSheet({ slot, date, initialTitle, taskId, onClose, onCreate }) {
   const initial = new Date(date);
   initial.setHours(Math.floor(slot), (slot % 1) * 60, 0, 0);
   const toHHMM = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(initialTitle || "");
   const [location, setLocation] = useState("");
   const [link, setLink] = useState("");
   const [startTime, setStartTime] = useState(toHHMM(initial));
@@ -188,6 +201,16 @@ export function CreateEventSheet({ slot, date, onClose, onCreate }) {
   const durationMin = Math.round((endDate - startDate) / 60000);
   const topicObj = topicById(topic);
 
+  // Editing the start time keeps the current duration — shifting the end
+  // time along with it — instead of leaving a stale end time in place,
+  // which used to silently collapse the event to the 30-min floor whenever
+  // only the start field got touched.
+  const onStartTimeChange = (nextStart) => {
+    const prevDuration = Math.max(30 * 60000, endDate - startDate);
+    const nextStartDate = buildDate(nextStart);
+    setEndTime(toHHMM(new Date(nextStartDate.getTime() + prevDuration)));
+    setStartTime(nextStart);
+  };
   const applyDuration = (mins) => setEndTime(toHHMM(new Date(startDate.getTime() + mins * 60000)));
   const applyMatchPreset = (letter) => { setTitle(`Partit ${letter} - `); setTopic("arbitratge"); };
 
@@ -197,11 +220,13 @@ export function CreateEventSheet({ slot, date, onClose, onCreate }) {
     try {
       await onCreate({
         summary: `${topicObj.emoji} ${title.trim()}`,
+        title: title.trim(),
         location,
         description: link.trim(),
         startISO: startDate.toISOString(),
         endISO: endDate.toISOString(),
         topic,
+        taskId,
       });
       onClose();
     } catch (e) {
@@ -228,7 +253,7 @@ export function CreateEventSheet({ slot, date, onClose, onCreate }) {
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 10.5, color: COLORS.textMuted, marginBottom: 3 }}>Inici</div>
-          <input type="time" style={{ ...S.inp, fontSize: 14 }} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          <input type="time" style={{ ...S.inp, fontSize: 14 }} value={startTime} onChange={(e) => onStartTimeChange(e.target.value)} />
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 10.5, color: COLORS.textMuted, marginBottom: 3 }}>Final</div>
@@ -260,7 +285,7 @@ export function CreateEventSheet({ slot, date, onClose, onCreate }) {
   );
 }
 
-export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, matchState, googleConnected, onRequestCreateSlot }) {
+export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, matchState, googleConnected, onRequestCreateSlot, day }) {
   const [agView, setAgView] = useState("day");
   const [focusDate, setFocusDate] = useState(() => new Date());
   const [selectedIdx, setSelectedIdx] = useState(null);
@@ -318,7 +343,7 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
 
       {calEvents && agView === "day" && (
         <div style={{ marginTop: 14 }} {...swipeDay}>
-          <DayTimeline events={dayEvents} onSelect={setSelectedIdx} selectedIdx={selectedIdx} onCreateSlot={(hour) => onRequestCreateSlot({ slot: hour, date: focusDate })} isToday={selDk === dateKey(new Date())} />
+          <DayTimeline events={dayEvents} onSelect={setSelectedIdx} selectedIdx={selectedIdx} onCreateSlot={(hour) => onRequestCreateSlot({ slot: hour, date: focusDate })} isToday={selDk === dateKey(new Date())} todayTasks={selDk === dateKey(new Date()) ? day?.tasks : null} />
           {dayEvents.length === 0 && <p style={{ ...S.muted, textAlign: "center", marginTop: -6, marginBottom: 10 }}>Cap event {selDk === dateKey(new Date()) ? "avui" : "aquest dia"}. Toca l'horari per afegir-ne un.</p>}
 
           {selectedEvent && (() => {

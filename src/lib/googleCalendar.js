@@ -9,11 +9,18 @@ const API_BASE = "https://www.googleapis.com/calendar/v3/calendars";
 // real Google Calendar UI, but round-tripped back out by fetchEvents() so
 // the app can color/classify events it created by topic.
 const TOPIC_PROPERTY = "tincAgendaTopic";
+// Same round-trip trick as the topic tag: links a calendar event back to the
+// day-task it was created from, so the Agenda timeline can tint the block by
+// that task's done/overdue state (README "Task ↔ calendar link").
+const TASK_PROPERTY = "tincAgendaTaskId";
 
+// timeMin reaches 7 days back (not "now") so today's already-passed events
+// stay visible in the day view instead of vanishing the moment they end,
+// and Agenda's day-by-day navigation has a little room to look backward too.
 export async function fetchEvents(token, calendarId = "primary") {
-  const now = new Date().toISOString();
+  const past = new Date(Date.now() - 7 * 86400000).toISOString();
   const future = new Date(Date.now() + 14 * 86400000).toISOString();
-  const url = `${API_BASE}/${encodeURIComponent(calendarId)}/events?timeMin=${now}&timeMax=${future}&singleEvents=true&orderBy=startTime&maxResults=50`;
+  const url = `${API_BASE}/${encodeURIComponent(calendarId)}/events?timeMin=${past}&timeMax=${future}&singleEvents=true&orderBy=startTime&maxResults=150`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (res.status === 401) { const e = new Error("Token caducat"); e.code = 401; throw e; }
   if (!res.ok) throw new Error(`Error carregant calendari (${res.status})`);
@@ -26,13 +33,15 @@ export async function fetchEvents(token, calendarId = "primary") {
     location: e.location || "",
     description: e.description || "",
     topic: e.extendedProperties?.private?.[TOPIC_PROPERTY] || null,
+    taskId: e.extendedProperties?.private?.[TASK_PROPERTY] || null,
   }));
 }
 
 // Creates a calendar event for a match with several reminder overrides,
 // so Google's own notification system delivers "many reminders" without
 // needing a mail server. Returns the created event's id.
-export async function createEvent(token, { summary, description, location, startISO, endISO, reminderMinutesBefore = [1440, 180, 30], calendarId = "primary", topic }) {
+export async function createEvent(token, { summary, description, location, startISO, endISO, reminderMinutesBefore = [1440, 180, 30], calendarId = "primary", topic, taskId }) {
+  const privateProps = { ...(topic ? { [TOPIC_PROPERTY]: topic } : {}), ...(taskId ? { [TASK_PROPERTY]: taskId } : {}) };
   const body = {
     summary,
     description,
@@ -43,7 +52,7 @@ export async function createEvent(token, { summary, description, location, start
       useDefault: false,
       overrides: reminderMinutesBefore.map(minutes => ({ method: "popup", minutes })),
     },
-    ...(topic ? { extendedProperties: { private: { [TOPIC_PROPERTY]: topic } } } : {}),
+    ...(Object.keys(privateProps).length ? { extendedProperties: { private: privateProps } } : {}),
   };
   const url = `${API_BASE}/${encodeURIComponent(calendarId)}/events`;
   const res = await fetch(url, {
