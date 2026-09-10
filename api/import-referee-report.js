@@ -135,9 +135,9 @@ export default async function handler(req, res) {
           await bigquery.query({
             query: `
               UPDATE \`${PROJECT}.refereeing.match_reports\`
-              SET rubric_physical = @rubric_physical, rubric_technical = @rubric_technical,
-                  rubric_disciplinary = @rubric_disciplinary, rubric_management = @rubric_management,
-                  rubric_personality = @rubric_personality, rubric_teamwork = @rubric_teamwork,
+              SET rubric_physical = CAST(@rubric_physical AS NUMERIC), rubric_technical = CAST(@rubric_technical AS NUMERIC),
+                  rubric_disciplinary = CAST(@rubric_disciplinary AS NUMERIC), rubric_management = CAST(@rubric_management AS NUMERIC),
+                  rubric_personality = CAST(@rubric_personality AS NUMERIC), rubric_teamwork = CAST(@rubric_teamwork AS NUMERIC),
                   rubric_items = @rubric_items, rubric_section_averages = @rubric_section_averages
               WHERE match_date = @matchDate AND home_team = @homeTeam AND away_team = @awayTeam
             `,
