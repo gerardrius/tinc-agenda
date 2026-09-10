@@ -1,11 +1,15 @@
 // RFEF CTA rubric: 6 sections, each item scored via a filled/unfilled radio
-// button in the PDF's rating tables — a vector graphic, not text, so no
-// regex/text-extraction approach can read it (confirmed by inspecting the
-// PDF's content streams: only Helvetica text objects, no icon font). Instead
-// we hand the whole PDF to Claude (native PDF vision) and ask it to read
-// which column is marked per item. Mirrors the "RFEF CTA - Master Arbitraje"
-// Google Sheet's own rubric structure exactly, so section averages match.
-import Anthropic from "@anthropic-ai/sdk";
+// button in the PDF's rating tables — a vector graphic, not text (confirmed
+// by inspecting the PDF's content streams: only Helvetica text objects, no
+// icon font), so no text-extraction approach can read it. This reads the
+// PDF's actual drawing operations instead of guessing visually: an unfilled
+// circle is drawn as [white fill, gray stroke] (same bounding box, ~12pt);
+// a filled one adds a third, smaller (~6pt) black-filled dot on top. That
+// pattern is 100% deterministic — verified against a manually-read sample
+// report, every one of 47 items matched exactly, including one a Claude
+// PDF-vision pass had misread — so this needs no LLM call at all.
+import "./_pdf-polyfills.js";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 
 export const RUBRIC_SECTIONS = [
   {
@@ -89,75 +93,71 @@ export const RUBRIC_SECTIONS = [
 
 export const ALL_RUBRIC_ITEMS = RUBRIC_SECTIONS.flatMap((s) => s.items.map(([code, label]) => ({ code, label, section: s.name })));
 
-const RUBRIC_TOOL = {
-  name: "record_rubric_scores",
-  description: "Record the referee's rubric scores read from the RFEF report's rating tables (the ○/● radio-button columns).",
-  input_schema: {
-    type: "object",
-    properties: {
-      items: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            code: { type: "string", description: "Item code, e.g. \"1.01\"" },
-            score: { type: "integer", description: "0-5: 0 = blank/No aplica/No se ha producido, 1 = Deficiente, 2 = Mejorable, 3 = Nivel esperado, 4 = Destacado, 5 = Excelente" },
-          },
-          required: ["code", "score"],
-          additionalProperties: false,
-        },
-      },
-    },
-    required: ["items"],
-    additionalProperties: false,
-  },
-  strict: true,
-};
+const RING_MIN = 10, RING_MAX = 16; // pt — the outer (always-drawn) circle
+const DOT_MIN = 2, DOT_MAX = 10; // pt — the inner mark, only on a selected column
 
-// Extracts { items: [{code,label,score}], sectionAverages: [{section,average}] }
-// from the PDF via Claude's native PDF reading. Returns null fields (not 0)
-// for items the model didn't report, so a parsing gap is visible rather than
-// silently counted as "No aplica" in the average.
+// Every ring/dot constructPath call on a page, in document (paint) order,
+// with its bounding-box width and the fill color active at draw time.
+async function pageShapes(page) {
+  const opList = await page.getOperatorList();
+  let fillColor = null;
+  const shapes = [];
+  for (let i = 0; i < opList.fnArray.length; i++) {
+    if (opList.fnArray[i] === pdfjsLib.OPS.setFillRGBColor) fillColor = opList.argsArray[i][0];
+    if (opList.fnArray[i] === pdfjsLib.OPS.constructPath) {
+      const mm = opList.argsArray[i][2];
+      if (mm) shapes.push({ w: mm[2] - mm[0], fill: fillColor });
+    }
+  }
+  return shapes;
+}
+
+// Walks a page's shape stream and returns one boolean per rubric column
+// encountered (true = that circle is the filled/selected one).
+function columnsFromShapes(shapes) {
+  const cols = [];
+  let i = 0;
+  while (i < shapes.length) {
+    if (shapes[i].fill === "#ffffff" && shapes[i].w > RING_MIN && shapes[i].w < RING_MAX) {
+      let j = i + 1;
+      if (j < shapes.length && shapes[j].w > RING_MIN && shapes[j].w < RING_MAX) j++; // ring stroke
+      let selected = false;
+      if (j < shapes.length && shapes[j].fill === "#000000" && shapes[j].w > DOT_MIN && shapes[j].w < DOT_MAX) { selected = true; j++; }
+      cols.push(selected);
+      i = j;
+    } else i++;
+  }
+  return cols;
+}
+
+// Extracts { items: [{code,label,section,score}], sectionAverages }. Scores
+// come out in document order and are zipped 1:1 against ALL_RUBRIC_ITEMS —
+// validated exact-match against a manually-read report, but if the document
+// doesn't contain exactly 6 circles per row for all 47 items (a differently
+// formatted report), this throws rather than silently misaligning items.
 export async function extractRubric(pdfBase64) {
-  const client = new Anthropic();
-  const itemList = ALL_RUBRIC_ITEMS.map((i) => `${i.code} (${i.section}) — ${i.label}`).join("\n");
+  const buffer = Buffer.from(pdfBase64, "base64");
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-5",
-    max_tokens: 4000,
-    output_config: { effort: "low" },
-    tools: [RUBRIC_TOOL],
-    tool_choice: { type: "tool", name: "record_rubric_scores" },
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
-          {
-            type: "text",
-            text: `This is an RFEF CTA "Informe Arbitral General" PDF. It contains several rating tables (one per section, on their own pages) where each row is an item scored via a row of radio-button circles under the columns: "No aplica / No se ha producido", "Deficiente", "Mejorable", "Nivel esperado", "Destacado", "Excelente" — read which circle is filled (●) vs empty (○) for each row.
+  let allCols = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const shapes = await pageShapes(await doc.getPage(p));
+    allCols = allCols.concat(columnsFromShapes(shapes));
+  }
 
-Report a score for every one of these ${ALL_RUBRIC_ITEMS.length} items, using this code → score mapping: 0 = the "No aplica"/"No se ha producido" column filled or no column filled at all (blank row), 1 = Deficiente, 2 = Mejorable, 3 = Nivel esperado, 4 = Destacado, 5 = Excelente.
+  if (allCols.length !== ALL_RUBRIC_ITEMS.length * 6) {
+    throw new Error(`Expected ${ALL_RUBRIC_ITEMS.length * 6} rubric radio circles, found ${allCols.length} — report layout may differ from the expected template.`);
+  }
 
-Items (code — label):
-${itemList}
-
-Call record_rubric_scores with one entry per item code above, in the same order.`,
-          },
-        ],
-      },
-    ],
+  const items = ALL_RUBRIC_ITEMS.map(({ code, label, section }, rowIdx) => {
+    const row = allCols.slice(rowIdx * 6, rowIdx * 6 + 6);
+    const selectedIdx = row.reduce((acc, v, k) => (v ? [...acc, k] : acc), []);
+    if (selectedIdx.length > 1) throw new Error(`Item ${code}: more than one column marked (${selectedIdx.join(",")})`);
+    return { code, label, section, score: selectedIdx.length ? selectedIdx[0] : 0 };
   });
 
-  const toolUse = response.content.find((b) => b.type === "tool_use");
-  if (!toolUse) throw new Error("Claude didn't return rubric scores (no tool_use block)");
-
-  const clamp = (n) => (Number.isFinite(n) ? Math.max(0, Math.min(5, Math.round(n))) : null);
-  const byCode = new Map(toolUse.input.items.map((i) => [i.code, clamp(i.score)]));
-  const items = ALL_RUBRIC_ITEMS.map(({ code, label, section }) => ({ code, label, section, score: byCode.has(code) ? byCode.get(code) : null }));
-
   const sectionAverages = RUBRIC_SECTIONS.map((s) => {
-    const scores = items.filter((i) => i.section === s.name && i.score != null && i.score > 0).map((i) => i.score);
+    const scores = items.filter((i) => i.section === s.name && i.score > 0).map((i) => i.score);
     return { section: s.name, average: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null };
   });
 
