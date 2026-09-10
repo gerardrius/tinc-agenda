@@ -5,7 +5,7 @@ import { BalanceWheel } from "./SetmanaView";
 import { computeDomainStats } from "../lib/domainStats";
 import { weekStartKey, parseIntention, taskForDay } from "../lib/taskRules";
 import { WEEKDAYS_ABBR, INTENTION_SUGGESTIONS_ALWAYS, TOPICS, topicById, nextTopic } from "../lib/constants";
-import { fmtTime, uid } from "../lib/utils";
+import { fmtTime, uid, localDateKey } from "../lib/utils";
 
 // Step layout: 0 balanç · 1 valoració · 2 intenció · one step per pètal
 // (TOPICS) · generació (review) · agenda de la setmana · tancament.
@@ -16,7 +16,7 @@ const STEP_AGENDA = STEP_REVIEW + 1;
 const STEP_FINAL = STEP_AGENDA + 1;
 const STEPS = STEP_FINAL + 1;
 
-const dateKey = (d) => d.toISOString().split("T")[0];
+const dateKey = localDateKey;
 const addDays = (d, n) => { const nd = new Date(d); nd.setDate(nd.getDate() + n); return nd; };
 
 export function RitualSetmanal({ day, global, allData, matchState, calEvents, persistDates, onClose }) {

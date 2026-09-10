@@ -1,12 +1,12 @@
 import { HABIT_POOL, INTENTION_KEYWORD_RULES } from "./constants";
-import { uid } from "./utils";
+import { uid, localDateKey } from "./utils";
 
 // Monday of the week containing `date` (defaults to today), as YYYY-MM-DD.
 export function weekStartKey(date = new Date()) {
   const dow = (date.getDay() + 6) % 7; // 0 = Monday
   const monday = new Date(date);
   monday.setDate(monday.getDate() - dow);
-  return monday.toISOString().split("T")[0];
+  return localDateKey(monday);
 }
 
 // Recurring habits are always active; match-week habits join when a match

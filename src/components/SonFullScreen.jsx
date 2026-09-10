@@ -3,7 +3,7 @@ import { S, COLORS } from "../lib/styles";
 import { Card, Segmented } from "./ui";
 import { last7Keys } from "../lib/domainStats";
 import { WEEKDAYS_ABBR } from "../lib/constants";
-import { todayKey } from "../lib/utils";
+import { todayKey, localDateKey } from "../lib/utils";
 import { SleepMapSec } from "./SleepMapSec";
 
 function bandColor(score) {
@@ -26,7 +26,7 @@ function hToHM(h) {
 function MonthlyTrend({ garminSleep }) {
   if (!garminSleep) return null;
   const days30 = [];
-  for (let i = 29; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days30.push(d.toISOString().split("T")[0]); }
+  for (let i = 29; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days30.push(localDateKey(d)); }
   const hours = days30.map((dk) => garminSleep[dk]?.hours).filter((h) => h != null);
   if (hours.length < 4) return null;
   const mid = Math.floor(hours.length / 2);

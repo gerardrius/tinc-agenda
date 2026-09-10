@@ -1,12 +1,13 @@
 import { COLORS } from "./styles";
 import { WEEKDAYS_ABBR, HABIT_POOL } from "./constants";
+import { localDateKey } from "./utils";
 
 // Oldest → newest date keys for the trailing 7 days, ending today.
 export function last7Keys() {
   const out = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
-    out.push(d.toISOString().split("T")[0]);
+    out.push(localDateKey(d));
   }
   return out;
 }

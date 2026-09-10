@@ -3,11 +3,11 @@ import { S, COLORS } from "../lib/styles";
 import { Card, Checkbox, TopicPill, RankBubble, ArrowBtn, DragHandle } from "./ui";
 import { RITUAL_SCALES, topicById, nextTopic } from "../lib/constants";
 import { isBlocked } from "../lib/taskRules";
-import { uid, todayKey, fmtTime } from "../lib/utils";
+import { uid, todayKey, fmtTime, localDateKey } from "../lib/utils";
 import { last7Keys } from "../lib/domainStats";
 
 const STEPS = 5;
-const tomorrowKey = () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; };
+const tomorrowKey = () => { const d = new Date(); d.setDate(d.getDate() + 1); return localDateKey(d); };
 
 function ScaleCard({ label, scale, val, onSelect }) {
   return (

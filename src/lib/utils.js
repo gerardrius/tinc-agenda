@@ -1,4 +1,15 @@
-export const todayKey = () => new Date().toISOString().split("T")[0];
+// Local calendar-date key (YYYY-MM-DD) — NOT `d.toISOString().split("T")[0]",
+// which converts to UTC first and silently shifts the date back a day for
+// anyone in a UTC-ahead timezone (all of Spain) whenever the local time is
+// past midnight-minus-offset (e.g. from 22:00 CEST/23:00 CET onward, or for
+// any Date deliberately set to local midnight, like a week's Monday).
+export function localDateKey(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+export const todayKey = () => localDateKey(new Date());
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 export function rpeC(n) { return n <= 3 ? "#22c55e" : n <= 5 ? "#eab308" : n <= 7 ? "#f97316" : "#ef4444"; }
@@ -12,7 +23,7 @@ export function computeStreak(habitId, allData) {
   const d = new Date();
   for (let i = 0; i < 365; i++) {
     d.setDate(d.getDate() - 1);
-    const dk = d.toISOString().split("T")[0];
+    const dk = localDateKey(d);
     if (!allData[dk]?.habits?.[habitId]) break;
     streak++;
   }

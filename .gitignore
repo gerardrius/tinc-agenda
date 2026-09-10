@@ -11,3 +11,4 @@ ios/App/build
 ios/App/DerivedData
 ios/**/xcuserdata
 ios/**/*.xcuserstate
+.env*

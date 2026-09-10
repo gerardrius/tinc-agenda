@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { CALENDARS, calendarColor, TOPICS, topicById, nextTopic } from "../lib/constants";
-import { fmtDate, fmtTime } from "../lib/utils";
+import { fmtDate, fmtTime, localDateKey } from "../lib/utils";
 import { fixtureText, roleLabel } from "../lib/matchCycle";
 import { S, COLORS } from "../lib/styles";
 import { Segmented, Sheet, SheetCloseBtn, TopicPill } from "./ui";
@@ -10,7 +10,7 @@ const timelineHeight = (DAY_END - DAY_START) * PX_PER_HOUR;
 const hourOf = (iso) => { const d = new Date(iso); return d.getHours() + d.getMinutes() / 60; };
 const isTimed = (e) => e.start?.includes("T");
 const eventColor = (e) => (e.topic ? topicById(e.topic).color : calendarColor(e.title));
-const dateKey = (d) => d.toISOString().split("T")[0];
+const dateKey = localDateKey;
 const addDays = (d, n) => { const nd = new Date(d); nd.setDate(nd.getDate() + n); return nd; };
 
 // Monday of the week containing `d` (README: weeks are Monday–Sunday fixed).
@@ -59,12 +59,12 @@ function layoutColumns(events) {
   });
 }
 
-function DayTimeline({ events, onSelect, selectedIdx, onCreateSlot }) {
+function DayTimeline({ events, onSelect, selectedIdx, onCreateSlot, isToday }) {
   const timed = events.filter(isTimed);
   const allDay = events.filter((e) => !isTimed(e));
   const laidOut = layoutColumns(timed);
   const nowH = new Date().getHours() + new Date().getMinutes() / 60;
-  const showNow = nowH >= DAY_START && nowH <= DAY_END;
+  const showNow = isToday && nowH >= DAY_START && nowH <= DAY_END;
 
   // Tapping empty timeline space opens the create-event sheet at that hour;
   // tapping an existing event block (a <button>) stops propagation instead.
@@ -323,7 +323,7 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
 
       {calEvents && agView === "day" && (
         <div style={{ marginTop: 14 }} {...swipeDay}>
-          <DayTimeline events={dayEvents} onSelect={setSelectedIdx} selectedIdx={selectedIdx} onCreateSlot={setCreatingSlot} />
+          <DayTimeline events={dayEvents} onSelect={setSelectedIdx} selectedIdx={selectedIdx} onCreateSlot={setCreatingSlot} isToday={selDk === dateKey(new Date())} />
           {dayEvents.length === 0 && <p style={{ ...S.muted, textAlign: "center", marginTop: -6, marginBottom: 10 }}>Cap event {selDk === dateKey(new Date()) ? "avui" : "aquest dia"}. Toca l'horari per afegir-ne un.</p>}
 
           {selectedEvent && (() => {
