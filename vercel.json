@@ -6,6 +6,9 @@
     "api/sync-referee-reports.js": {
       "includeFiles": "node_modules/pdfjs-dist/**",
       "maxDuration": 60
+    },
+    "api/sync-garmin-now.js": {
+      "maxDuration": 300
     }
   }
 }
