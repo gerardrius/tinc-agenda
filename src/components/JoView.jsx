@@ -1,19 +1,49 @@
+import { useRef, useState } from "react";
 import { S, COLORS } from "../lib/styles";
 import { Card } from "./ui";
 import { last7Keys } from "../lib/domainStats";
 import { todayKey } from "../lib/utils";
 import { useFinances } from "../lib/financesApi";
+import { useRefereeingMatches, importRefereeReport } from "../lib/refereeingApi";
 
-// Sample data for goals/history without a real source yet (career ratings,
-// social log) — same "ship to spec now, wire later" approach the finances
-// entry used to follow, before api/finances.js landed.
+// Sample data for goals without a real source yet (social log) — same "ship
+// to spec now, wire later" approach finances/refereeing used to follow.
 const GOALS_STATIC = [
-  { label: "Ascendir a 2ª División", value: "0 partits encara", pct: 0, color: COLORS.domainRef, source: "Sense dades reals encara", status: "atenció" },
   { label: "Veure la Muntsa 2 cops/setmana", value: "2.4 de mitjana", pct: 1, color: COLORS.accent, source: "Registre social", status: "en camí" },
   { label: "Mantenir son >80 de mitjana", value: "70 de 80", pct: 0.85, color: COLORS.good, source: "Garmin · viu", status: "atenció" },
 ];
-const MATCH_HISTORY = [7.6, 7.9, 8.2, 7.8, 8.4, 8.0, 8.3, 8.1];
-const MATCH_MONTHS = ["mar.", "abr.", "mai.", "jun.", "jul.", "ago.", "set."];
+
+function ImportReportButton({ onImported }) {
+  const [status, setStatus] = useState(null); // null | "loading" | { ok, message }
+  const fileInputRef = useRef(null);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setStatus("loading");
+    const result = await importRefereeReport(file);
+    if (result.ok) {
+      const p = result.parsed;
+      setStatus({ ok: true, message: `${p.home_team} - ${p.away_team} (${p.match_date}): puntuació ${p.final_score ?? "—"}.` });
+      onImported();
+    } else {
+      setStatus({ ok: false, message: result.error });
+    }
+  };
+
+  return (
+    <div>
+      <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" onChange={handleFile} style={{ display: "none" }} />
+      <button onClick={() => fileInputRef.current?.click()} disabled={status === "loading"} style={{ ...S.smBtn, width: "100%", textAlign: "center", marginTop: 8 }}>
+        {status === "loading" ? "Important…" : "📄 Importar informe RFEF"}
+      </button>
+      {status && status !== "loading" && (
+        <p style={{ fontSize: 11, marginTop: 6, color: status.ok ? COLORS.good : COLORS.alert }}>{status.message}</p>
+      )}
+    </div>
+  );
+}
 
 function TrendCard({ label, value, delta, up, points, color }) {
   const max = Math.max(...points), min = Math.min(...points);
@@ -34,15 +64,27 @@ function TrendCard({ label, value, delta, up, points, color }) {
 
 export function JoView({ global, allData, garminSleep, onOpenFull }) {
   const { data: fin } = useFinances();
+  const { matches, refetch: refetchMatches } = useRefereeingMatches();
   const netWorth = fin?.netWorth ? Number(fin.netWorth.total_amount) : null;
   const trend = fin?.netWorthTrend?.map((t) => Number(t.total)) || [];
   const firstNetWorth = trend[0];
   const netWorthDelta = netWorth != null && firstNetWorth ? netWorth - firstNetWorth : null;
   const netWorthDeltaPct = netWorthDelta != null && firstNetWorth ? (netWorthDelta / firstNetWorth) * 100 : null;
   const savingsPct = netWorth != null ? Math.min(1, netWorth / 60000) : 0;
+
+  const scoredMatches = matches.filter((m) => m.final_score != null);
+  const avgMatchScore = scoredMatches.length ? scoredMatches.reduce((s, m) => s + Number(m.final_score), 0) / scoredMatches.length : null;
+  const refereeingGoal = {
+    label: "Valoració arbitral per sobre de 60",
+    value: matches.length ? `${matches.length} partit${matches.length === 1 ? "" : "s"} · ${avgMatchScore != null ? avgMatchScore.toFixed(1) : "—"}` : "0 partits encara",
+    pct: avgMatchScore != null ? Math.min(1, avgMatchScore / 100) : 0,
+    color: COLORS.domainRef,
+    source: matches.length ? "RFEF · valoracions reals" : "Sense informes importats",
+    status: avgMatchScore != null && avgMatchScore >= 60 ? "en camí" : "atenció",
+  };
   const GOALS = netWorth != null
-    ? [GOALS_STATIC[0], { label: "Arribar a €60.000 de patrimoni aquest any", value: `€${Math.round(netWorth).toLocaleString("ca-ES")}`, pct: savingsPct, color: COLORS.warn, source: "BigQuery · viu", status: savingsPct >= 0.66 ? "en camí" : "atenció" }, ...GOALS_STATIC.slice(1)]
-    : GOALS_STATIC;
+    ? [refereeingGoal, { label: "Arribar a €60.000 de patrimoni aquest any", value: `€${Math.round(netWorth).toLocaleString("ca-ES")}`, pct: savingsPct, color: COLORS.warn, source: "BigQuery · viu", status: savingsPct >= 0.66 ? "en camí" : "atenció" }, ...GOALS_STATIC]
+    : [refereeingGoal, ...GOALS_STATIC];
 
   const dates = last7Keys();
   const scores = dates.map((dk) => garminSleep?.[dk]?.score).filter((s) => s != null);
@@ -51,8 +93,11 @@ export function JoView({ global, allData, garminSleep, onOpenFull }) {
   const avgHours = hours.length ? (hours.reduce((a, b) => a + b, 0) / hours.length).toFixed(1) : "—";
   const yesterday = garminSleep?.[todayKey()]?.score ?? "—";
 
-  const maxHist = Math.max(...MATCH_HISTORY), minHist = Math.min(...MATCH_HISTORY);
-  const histPts = MATCH_HISTORY.map((v, i) => [(i / (MATCH_HISTORY.length - 1)) * 330, 90 - ((v - minHist) / (maxHist - minHist || 1)) * 76 - 4]);
+  const matchHistory = [...scoredMatches].sort((a, b) => (a.match_date < b.match_date ? -1 : 1));
+  const histValues = matchHistory.map((m) => Number(m.final_score));
+  const histMonths = matchHistory.map((m) => new Date(m.match_date + "T12:00:00").toLocaleDateString("ca-ES", { month: "short" }));
+  const maxHist = histValues.length ? Math.max(...histValues) : 1, minHist = histValues.length ? Math.min(...histValues) : 0;
+  const histPts = histValues.map((v, i) => [(i / (Math.max(histValues.length, 2) - 1)) * 330, 90 - ((v - minHist) / (maxHist - minHist || 1)) * 76 - 4]);
 
   return (
     <div>
@@ -115,15 +160,21 @@ export function JoView({ global, allData, garminSleep, onOpenFull }) {
           <div style={{ fontSize: 14.5, fontWeight: 600 }}>Historial de partits</div>
           <span style={{ fontSize: 11, color: COLORS.textSec }}>valoració RFEF</span>
         </div>
-        <svg width="100%" height={112} viewBox="0 0 330 112" preserveAspectRatio="none">
-          {[0.25, 0.5, 0.75].map((f) => <line key={f} x1={0} y1={90 * f} x2={330} y2={90 * f} stroke={COLORS.track} strokeWidth={1} />)}
-          <polyline points={histPts.map((p) => `${p[0]},${p[1]}`).join(" ")} fill="none" stroke="#e3d5c6" strokeWidth={1.5} strokeDasharray="3 4" />
-          <polyline points={histPts.map((p) => `${p[0]},${p[1]}`).join(" ")} fill="none" stroke={COLORS.domainRef} strokeWidth={1.8} />
-          {histPts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={3} fill="#fff" stroke={COLORS.domainRef} strokeWidth={1.8} />)}
-        </svg>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-          {MATCH_MONTHS.map((m) => <span key={m} style={{ fontSize: 11, color: COLORS.textMuted }}>{m}</span>)}
-        </div>
+        {histValues.length > 1 ? (
+          <>
+            <svg width="100%" height={112} viewBox="0 0 330 112" preserveAspectRatio="none">
+              {[0.25, 0.5, 0.75].map((f) => <line key={f} x1={0} y1={90 * f} x2={330} y2={90 * f} stroke={COLORS.track} strokeWidth={1} />)}
+              <polyline points={histPts.map((p) => `${p[0]},${p[1]}`).join(" ")} fill="none" stroke={COLORS.domainRef} strokeWidth={1.8} />
+              {histPts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={3} fill="#fff" stroke={COLORS.domainRef} strokeWidth={1.8} />)}
+            </svg>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+              {histMonths.map((m, i) => <span key={i} style={{ fontSize: 11, color: COLORS.textMuted }}>{m}</span>)}
+            </div>
+          </>
+        ) : (
+          <p style={S.muted}>{histValues.length === 1 ? "Un sol informe importat — encara no hi ha prou per veure una tendència." : "Cap informe importat encara."}</p>
+        )}
+        <ImportReportButton onImported={refetchMatches} />
       </Card>
     </div>
   );
