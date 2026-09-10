@@ -35,3 +35,13 @@ export async function importRefereeReport(file) {
   if (!res.ok) return { ok: false, error: data.error || `Error ${res.status}` };
   return { ok: true, parsed: data.parsed, skipped: data.skipped, rubricUpdated: data.rubricUpdated, rubricUpdateError: data.rubricUpdateError, rubricError: data.rubricError };
 }
+
+// Triggers api/sync-referee-reports.js — lists the season's Drive folder
+// and imports/backfills anything not already recorded. Returns
+// { ok, totalInFolder, processed, results } or { ok: false, error }.
+export async function syncRefereeReportsFromDrive() {
+  const res = await fetch("/api/sync-referee-reports", { method: "POST" });
+  const data = await res.json();
+  if (!res.ok) return { ok: false, error: data.error || `Error ${res.status}` };
+  return { ok: true, ...data };
+}

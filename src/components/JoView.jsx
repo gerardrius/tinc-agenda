@@ -4,7 +4,7 @@ import { Card } from "./ui";
 import { last7Keys } from "../lib/domainStats";
 import { todayKey } from "../lib/utils";
 import { useFinances } from "../lib/financesApi";
-import { useRefereeingMatches, importRefereeReport } from "../lib/refereeingApi";
+import { useRefereeingMatches, importRefereeReport, syncRefereeReportsFromDrive } from "../lib/refereeingApi";
 
 // Sample data for goals without a real source yet (social log) — same "ship
 // to spec now, wire later" approach finances/refereeing used to follow.
@@ -43,6 +43,36 @@ function ImportReportButton({ onImported }) {
       <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" onChange={handleFile} style={{ display: "none" }} />
       <button onClick={() => fileInputRef.current?.click()} disabled={status === "loading"} style={{ ...S.smBtn, width: "100%", textAlign: "center", marginTop: 8 }}>
         {status === "loading" ? "Important…" : "📄 Importar informe RFEF"}
+      </button>
+      {status && status !== "loading" && (
+        <p style={{ fontSize: 11, marginTop: 6, color: status.ok ? COLORS.good : COLORS.alert }}>{status.message}</p>
+      )}
+    </div>
+  );
+}
+
+function SyncDriveButton({ onImported }) {
+  const [status, setStatus] = useState(null); // null | "loading" | { ok, message }
+
+  const handleSync = async () => {
+    setStatus("loading");
+    const result = await syncRefereeReportsFromDrive();
+    if (result.ok) {
+      const newOnes = result.results.filter((r) => r.status === "importat" || r.status === "actualitzat (ja existia per data+equips)");
+      const errors = result.results.filter((r) => r.status === "error");
+      const parts = [`${result.totalInFolder} PDFs a la carpeta`, `${newOnes.length} processats`];
+      if (errors.length) parts.push(`${errors.length} amb error`);
+      setStatus({ ok: !errors.length, message: parts.join(" · ") });
+      if (newOnes.length) onImported();
+    } else {
+      setStatus({ ok: false, message: result.error });
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={handleSync} disabled={status === "loading"} style={{ ...S.smBtn, width: "100%", textAlign: "center", marginTop: 8 }}>
+        {status === "loading" ? "Sincronitzant…" : "🔄 Actualitzar des de Drive"}
       </button>
       {status && status !== "loading" && (
         <p style={{ fontSize: 11, marginTop: 6, color: status.ok ? COLORS.good : COLORS.alert }}>{status.message}</p>
@@ -180,6 +210,7 @@ export function JoView({ global, allData, garminSleep, onOpenFull }) {
         ) : (
           <p style={S.muted}>{histValues.length === 1 ? "Un sol informe importat — encara no hi ha prou per veure una tendència." : "Cap informe importat encara."}</p>
         )}
+        <SyncDriveButton onImported={refetchMatches} />
         <ImportReportButton onImported={refetchMatches} />
       </Card>
     </div>
