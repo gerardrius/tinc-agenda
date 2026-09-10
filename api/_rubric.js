@@ -101,7 +101,7 @@ const RUBRIC_TOOL = {
           type: "object",
           properties: {
             code: { type: "string", description: "Item code, e.g. \"1.01\"" },
-            score: { type: "integer", minimum: 0, maximum: 5, description: "0 = blank/No aplica/No se ha producido, 1 = Deficiente, 2 = Mejorable, 3 = Nivel esperado, 4 = Destacado, 5 = Excelente" },
+            score: { type: "integer", description: "0-5: 0 = blank/No aplica/No se ha producido, 1 = Deficiente, 2 = Mejorable, 3 = Nivel esperado, 4 = Destacado, 5 = Excelente" },
           },
           required: ["code", "score"],
           additionalProperties: false,
@@ -152,7 +152,8 @@ Call record_rubric_scores with one entry per item code above, in the same order.
   const toolUse = response.content.find((b) => b.type === "tool_use");
   if (!toolUse) throw new Error("Claude didn't return rubric scores (no tool_use block)");
 
-  const byCode = new Map(toolUse.input.items.map((i) => [i.code, i.score]));
+  const clamp = (n) => (Number.isFinite(n) ? Math.max(0, Math.min(5, Math.round(n))) : null);
+  const byCode = new Map(toolUse.input.items.map((i) => [i.code, clamp(i.score)]));
   const items = ALL_RUBRIC_ITEMS.map(({ code, label, section }) => ({ code, label, section, score: byCode.has(code) ? byCode.get(code) : null }));
 
   const sectionAverages = RUBRIC_SECTIONS.map((s) => {
