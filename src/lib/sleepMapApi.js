@@ -23,6 +23,12 @@ function getSleepDataCached() {
   if (!_cachedPromise) _cachedPromise = fetchSleepData();
   return _cachedPromise;
 }
+// Drops the cached /api/sleep response — call after a successful Timeline
+// import (SleepMapSec's upload button) so the map picks up the new rows
+// without a full app reload.
+export function invalidateSleepDataCache() {
+  _cachedPromise = null;
+}
 let _cachedGarminPromise = null;
 function getGarminDailyCached() {
   if (!_cachedGarminPromise) _cachedGarminPromise = fetchGarminDaily();
@@ -55,6 +61,10 @@ export function useGarminSleepByDate() {
             restingHr: d.resting_hr,
             hrvAvg: d.hrv_avg,
             trainingReadiness: d.training_readiness_score,
+            deepHours: d.deep_hours,
+            lightHours: d.light_hours,
+            remHours: d.rem_hours,
+            awakeHours: d.awake_hours,
           };
         });
       }

@@ -8,8 +8,8 @@ import { useFinances } from "../lib/financesApi";
 // social log) — same "ship to spec now, wire later" approach the finances
 // entry used to follow, before api/finances.js landed.
 const GOALS_STATIC = [
-  { label: "Ascendir a 2ª División", value: "11 partits · 8.1", pct: 0.62, color: COLORS.domainRef, source: "RFEF · valoracions", status: "en camí" },
-  { label: "Veure la Muntsa 3 cops/setmana", value: "2.4 de mitjana", pct: 0.78, color: COLORS.accent, source: "Registre social", status: "atenció" },
+  { label: "Ascendir a 2ª División", value: "0 partits encara", pct: 0, color: COLORS.domainRef, source: "Sense dades reals encara", status: "atenció" },
+  { label: "Veure la Muntsa 2 cops/setmana", value: "2.4 de mitjana", pct: 1, color: COLORS.accent, source: "Registre social", status: "en camí" },
   { label: "Mantenir son >80 de mitjana", value: "70 de 80", pct: 0.85, color: COLORS.good, source: "Garmin · viu", status: "atenció" },
 ];
 const MATCH_HISTORY = [7.6, 7.9, 8.2, 7.8, 8.4, 8.0, 8.3, 8.1];
@@ -39,10 +39,9 @@ export function JoView({ global, allData, garminSleep, onOpenFull }) {
   const firstNetWorth = trend[0];
   const netWorthDelta = netWorth != null && firstNetWorth ? netWorth - firstNetWorth : null;
   const netWorthDeltaPct = netWorthDelta != null && firstNetWorth ? (netWorthDelta / firstNetWorth) * 100 : null;
-  const savingsCurrent = fin ? fin.investments.reduce((s, f) => s + (f.value_eur != null ? Number(f.value_eur) : 0), 0) : null;
-  const savingsPct = savingsCurrent != null ? Math.min(1, savingsCurrent / 15000) : 0;
-  const GOALS = savingsCurrent != null
-    ? [GOALS_STATIC[0], { label: "Estalviar €15.000 aquest any", value: `€${Math.round(savingsCurrent).toLocaleString("ca-ES")}`, pct: savingsPct, color: COLORS.warn, source: "BigQuery · viu", status: savingsPct >= 0.66 ? "en camí" : "atenció" }, ...GOALS_STATIC.slice(1)]
+  const savingsPct = netWorth != null ? Math.min(1, netWorth / 60000) : 0;
+  const GOALS = netWorth != null
+    ? [GOALS_STATIC[0], { label: "Arribar a €60.000 de patrimoni aquest any", value: `€${Math.round(netWorth).toLocaleString("ca-ES")}`, pct: savingsPct, color: COLORS.warn, source: "BigQuery · viu", status: savingsPct >= 0.66 ? "en camí" : "atenció" }, ...GOALS_STATIC.slice(1)]
     : GOALS_STATIC;
 
   const dates = last7Keys();

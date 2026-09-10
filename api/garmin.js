@@ -16,7 +16,8 @@ export default async function handler(req, res) {
                sleep_start_local, sleep_end_local, resting_hr,
                hrv_last_night_avg, hrv_status, stress_avg,
                body_battery_high, body_battery_low,
-               training_readiness_score, training_readiness_level
+               training_readiness_score, training_readiness_level,
+               deep_sleep_seconds, light_sleep_seconds, rem_sleep_seconds, awake_sleep_seconds
         FROM \`project-d225e115-18b7-433d-ae0.garmin.daily_metrics\`
         ORDER BY calendar_date DESC
         LIMIT 120
@@ -36,6 +37,10 @@ export default async function handler(req, res) {
       body_battery_low: r.body_battery_low != null ? Number(r.body_battery_low) : null,
       training_readiness_score: r.training_readiness_score != null ? Number(r.training_readiness_score) : null,
       training_readiness_level: r.training_readiness_level,
+      deep_hours: r.deep_sleep_seconds != null ? Number(r.deep_sleep_seconds) / 3600 : null,
+      light_hours: r.light_sleep_seconds != null ? Number(r.light_sleep_seconds) / 3600 : null,
+      rem_hours: r.rem_sleep_seconds != null ? Number(r.rem_sleep_seconds) / 3600 : null,
+      awake_hours: r.awake_sleep_seconds != null ? Number(r.awake_sleep_seconds) / 3600 : null,
     }));
     res.setHeader("Cache-Control", "s-maxage=1800, stale-while-revalidate=300");
     res.status(200).json({ days });

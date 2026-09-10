@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
 import { MarkerClusterer } from "@googlemaps/markerclusterer";
-import { fetchSleepData } from "../lib/sleepMapApi";
+import { fetchSleepData, invalidateSleepDataCache } from "../lib/sleepMapApi";
 import { Card, Lbl, Sheet, SheetCloseBtn } from "./ui";
-import { COLORS } from "../lib/styles";
+import { S, COLORS } from "../lib/styles";
 
 const ACCENT = "#818cf8"; // same indigo used by the old manual sleep-quality chips
 
@@ -77,17 +77,58 @@ function buildCategories(places, nights) {
   return { categories, order };
 }
 
+function ImportTimelineButton({ onImported }) {
+  const [status, setStatus] = useState(null); // null | "loading" | { ok, message }
+  const fileInputRef = useRef(null);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow picking the same file again later
+    if (!file) return;
+    setStatus("loading");
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const res = await fetch("/api/import-timeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(json),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+      setStatus({ ok: true, message: `${data.inserted} nits noves importades (${data.skipped_duplicates} ja existien).` });
+      invalidateSleepDataCache();
+      onImported();
+    } catch (err) {
+      setStatus({ ok: false, message: err.message || "Error important el Timeline." });
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <input ref={fileInputRef} type="file" accept="application/json,.json" onChange={handleFile} style={{ display: "none" }} />
+      <button onClick={() => fileInputRef.current?.click()} disabled={status === "loading"} style={{ ...S.smBtn, width: "100%", textAlign: "center" }}>
+        {status === "loading" ? "Important…" : "📍 Importar export del Timeline"}
+      </button>
+      {status && status !== "loading" && (
+        <p style={{ fontSize: 11, marginTop: 6, color: status.ok ? COLORS.good : COLORS.alert }}>{status.message}</p>
+      )}
+    </div>
+  );
+}
+
 export function SleepMapSec() {
   const [state, setState] = useState({ loading: true, error: null, places: [], nights: [] });
   const [pin, setPin] = useState(null);
   const mapDivRef = useRef(null);
   const mapObjRef = useRef(null);
 
-  useEffect(() => {
+  const loadSleepData = () => {
     fetchSleepData()
       .then(d => setState({ loading: false, error: null, places: d.places, nights: d.nights }))
       .catch(e => setState({ loading: false, error: e.message, places: [], nights: [] }));
-  }, []);
+  };
+  useEffect(loadSleepData, []);
 
   const { categories, order } = buildCategories(state.places, state.nights);
 
@@ -166,7 +207,10 @@ export function SleepMapSec() {
   }, [state.loading, state.error]);
 
   if (state.loading) return <Card><p style={{ margin: 0, fontSize: 12, color: "#8a7f74" }}>Carregant mapa del son…</p></Card>;
-  if (state.error) return <Card><p style={{ margin: 0, fontSize: 12, color: "#d4856a" }}>{state.error}</p></Card>;
+  if (state.error) return (<div>
+    <ImportTimelineButton onImported={loadSleepData} />
+    <Card><p style={{ margin: 0, fontSize: 12, color: "#d4856a" }}>{state.error}</p></Card>
+  </div>);
 
   const pinCat = pin ? categories[pin] : null;
   const pinNights = pinCat ? [...pinCat.nights].sort((a, b) => (a.calendar_date < b.calendar_date ? 1 : -1)) : [];
@@ -174,6 +218,7 @@ export function SleepMapSec() {
   const pinHoursAvg = pinCat ? avg(pinCat.nights.map((x) => x.sleep_hours).filter((v) => v != null)) : null;
 
   return (<div>
+    <ImportTimelineButton onImported={loadSleepData} />
     <div ref={mapDivRef} style={{ width: "100%", height: 280, borderRadius: 9, overflow: "hidden", border: "1px solid #ede8e3", marginBottom: 10 }} />
     <Lbl>Llocs</Lbl>
     {order.map(k => {

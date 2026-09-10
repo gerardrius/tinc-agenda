@@ -3,7 +3,7 @@ import { S, COLORS } from "../lib/styles";
 import { Card, Segmented } from "./ui";
 import { useFinances } from "../lib/financesApi";
 
-const SAVINGS_TARGET = 15000; // Personal goal, not a BigQuery field — nothing to fetch here.
+const SAVINGS_TARGET = 60000; // Personal goal (patrimoni net), not a BigQuery field — nothing to fetch here.
 const fmtEur = (n) => `€${Math.round(n).toLocaleString("ca-ES")}`;
 const monthKeyOf = (d) => (d || "").slice(0, 7); // "YYYY-MM" from a date string
 const isoWeekKey = (dateStr) => {
@@ -177,8 +177,8 @@ function Despeses({ data }) {
 }
 
 function Estalvi({ data }) {
-  const totalInvested = data.investments.reduce((sum, f) => sum + (f.value_eur != null ? Number(f.value_eur) : 0), 0);
-  const pct = Math.min(1, totalInvested / SAVINGS_TARGET);
+  const netWorth = data.netWorth ? Number(data.netWorth.total_amount) : 0;
+  const pct = Math.min(1, netWorth / SAVINGS_TARGET);
 
   const contribByMonth = useMemo(() => {
     const m = {};
@@ -194,8 +194,8 @@ function Estalvi({ data }) {
       <Card>
         <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Estalviar {fmtEur(SAVINGS_TARGET)} aquest any</div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 30, fontWeight: 600, color: COLORS.accent }}>{fmtEur(totalInvested)}</span>
-          <span style={{ fontSize: 12.5, color: COLORS.textSec }}>invertits · {Math.round(pct * 100)}%</span>
+          <span style={{ fontSize: 30, fontWeight: 600, color: COLORS.accent }}>{fmtEur(netWorth)}</span>
+          <span style={{ fontSize: 12.5, color: COLORS.textSec }}>patrimoni net · {Math.round(pct * 100)}%</span>
         </div>
         <div style={{ height: 7, borderRadius: 99, background: COLORS.track }}>
           <div style={{ height: 7, borderRadius: 99, width: `${pct * 100}%`, background: COLORS.accent }} />

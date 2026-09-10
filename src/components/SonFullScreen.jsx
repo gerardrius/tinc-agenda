@@ -2,7 +2,6 @@ import { useState } from "react";
 import { S, COLORS } from "../lib/styles";
 import { Card, Segmented } from "./ui";
 import { last7Keys } from "../lib/domainStats";
-import { WEEKDAYS_ABBR } from "../lib/constants";
 import { todayKey, localDateKey } from "../lib/utils";
 import { SleepMapSec } from "./SleepMapSec";
 
@@ -49,16 +48,26 @@ function MonthlyTrend({ garminSleep }) {
   );
 }
 
+const STAGE_COLORS = { deep: COLORS.ref, light: COLORS.good, rem: COLORS.accent };
+const weekdayShort = (dk) => new Date(dk + "T12:00:00").toLocaleDateString("ca-ES", { weekday: "short" });
+const dayAbbr = (dk) => weekdayShort(dk).replace(".", "").slice(0, 1).toUpperCase();
+
 export function SonFullScreen({ garminSleep, matchState, onClose }) {
   const [tab, setTab] = useState("son");
   const dates = last7Keys();
   const last = garminSleep?.[todayKey()];
   const weekScores = dates.map((dk) => garminSleep?.[dk]?.score ?? null);
   const weekHours = dates.map((dk) => garminSleep?.[dk]?.hours ?? null);
+  const weekStages = dates.map((dk) => {
+    const g = garminSleep?.[dk];
+    if (!g) return null;
+    return { deep: g.deepHours || 0, light: g.lightHours || 0, rem: g.remHours || 0 };
+  });
   const withScore = dates.map((dk, i) => ({ dk, score: weekScores[i], hours: weekHours[i] })).filter((d) => d.score != null);
   const avgScore = withScore.length ? withScore.reduce((s, d) => s + d.score, 0) / withScore.length : null;
   const best = withScore.length ? withScore.reduce((a, b) => (b.hours > a.hours ? b : a)) : null;
   const worst = withScore.length ? withScore.reduce((a, b) => (b.hours < a.hours ? b : a)) : null;
+  const maxStageTotal = Math.max(1, ...weekStages.map((s) => (s ? s.deep + s.light + s.rem : 0)));
 
   const isMatchWeek = Boolean(matchState?.ctx === "partitA" || matchState?.ctx === "quart");
   const insight = isMatchWeek && avgScore != null && avgScore < 75
@@ -87,15 +96,35 @@ export function SonFullScreen({ garminSleep, matchState, onClose }) {
             </div>
 
             <Card>
-              <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Últims 7 dies</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 600 }}>Últims 7 dies</div>
+                <div style={{ display: "flex", gap: 8, fontSize: 10, color: COLORS.textSec }}>
+                  <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: STAGE_COLORS.deep, marginRight: 3 }} />Profund</span>
+                  <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: STAGE_COLORS.light, marginRight: 3 }} />Lleuger</span>
+                  <span><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: STAGE_COLORS.rem, marginRight: 3 }} />REM</span>
+                </div>
+              </div>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 110 }}>
-                {weekScores.map((s, i) => (
-                  <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                    <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: COLORS.textSec }}>{s ?? ""}</span>
-                    <div style={{ width: "100%", height: Math.max(3, ((s || 0) / 100) * 76), background: bandColor(s), borderRadius: "6px 6px 3px 3px" }} />
-                    <span style={{ fontSize: 10, color: COLORS.textFaint }}>{WEEKDAYS_ABBR[i]}</span>
-                  </div>
-                ))}
+                {dates.map((dk, i) => {
+                  const s = weekStages[i];
+                  const total = s ? s.deep + s.light + s.rem : 0;
+                  const scaled = (h) => (h / maxStageTotal) * 76;
+                  return (
+                    <div key={dk} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: COLORS.textSec }}>{weekScores[i] ?? ""}</span>
+                      {s ? (
+                        <div style={{ width: "100%", display: "flex", flexDirection: "column-reverse", borderRadius: "6px 6px 3px 3px", overflow: "hidden" }}>
+                          <div style={{ width: "100%", height: Math.max(1, scaled(s.deep)), background: STAGE_COLORS.deep }} />
+                          <div style={{ width: "100%", height: Math.max(1, scaled(s.light)), background: STAGE_COLORS.light }} />
+                          <div style={{ width: "100%", height: Math.max(1, scaled(s.rem)), background: STAGE_COLORS.rem }} />
+                        </div>
+                      ) : (
+                        <div style={{ width: "100%", height: 3, background: COLORS.track, borderRadius: 99 }} />
+                      )}
+                      <span style={{ fontSize: 10, color: COLORS.textFaint }}>{dayAbbr(dk)}</span>
+                    </div>
+                  );
+                })}
               </div>
             </Card>
 
@@ -103,12 +132,12 @@ export function SonFullScreen({ garminSleep, matchState, onClose }) {
               <div style={S.mini}>
                 <div style={{ fontSize: 11.5, color: COLORS.textSec }}>Millor nit</div>
                 <div style={{ fontSize: 18, fontWeight: 600, color: COLORS.good }}>{best ? hToHM(best.hours) : "—"}</div>
-                <div style={{ fontSize: 10.5, color: COLORS.textFaint }}>{best ? WEEKDAYS_ABBR[dates.indexOf(best.dk)] : ""}</div>
+                <div style={{ fontSize: 10.5, color: COLORS.textFaint }}>{best ? weekdayShort(best.dk) : ""}</div>
               </div>
               <div style={S.mini}>
                 <div style={{ fontSize: 11.5, color: COLORS.textSec }}>Pitjor nit</div>
                 <div style={{ fontSize: 18, fontWeight: 600, color: COLORS.alert }}>{worst ? hToHM(worst.hours) : "—"}</div>
-                <div style={{ fontSize: 10.5, color: COLORS.textFaint }}>{worst ? WEEKDAYS_ABBR[dates.indexOf(worst.dk)] : ""}</div>
+                <div style={{ fontSize: 10.5, color: COLORS.textFaint }}>{worst ? weekdayShort(worst.dk) : ""}</div>
               </div>
               <div style={S.mini}>
                 <div style={{ fontSize: 11.5, color: COLORS.textSec }}>Puntuació mitjana</div>
