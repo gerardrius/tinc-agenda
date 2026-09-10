@@ -110,7 +110,7 @@ export default async function handler(req, res) {
     const rubricColumns = {};
     if (rubric) {
       rubric.sectionAverages.forEach(({ section, average }) => { rubricColumns[SECTION_TO_COLUMN[section]] = average; });
-      rubricColumns.rubric_items = rubric.items;
+      rubricColumns.rubric_items = rubric.items.map(({ code, label, score }) => ({ code, label, score }));
       rubricColumns.rubric_section_averages = rubric.sectionAverages;
     }
 
