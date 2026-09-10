@@ -96,11 +96,27 @@ export default async function handler(req, res) {
     const { result, ...row } = parsed;
 
     const bigquery = getBigQuery();
+
+    // Same fixture + date already imported (e.g. the same PDF picked twice,
+    // or a re-export) — skip instead of double-counting it in the average.
+    const [existing] = await bigquery.query({
+      query: `
+        SELECT 1 FROM \`${PROJECT}.refereeing.match_reports\`
+        WHERE match_date = @matchDate AND home_team = @homeTeam AND away_team = @awayTeam
+        LIMIT 1
+      `,
+      params: { matchDate: row.match_date, homeTeam: row.home_team, awayTeam: row.away_team },
+    });
+    if (existing.length) {
+      res.status(200).json({ ok: true, skipped: true, parsed: { ...row, raw_text: undefined, result } });
+      return;
+    }
+
     await bigquery.dataset("refereeing", { projectId: PROJECT }).table("match_reports").insert([
       { ...row, source_file: fileName || null, imported_at: new Date().toISOString() },
     ]);
 
-    res.status(200).json({ ok: true, parsed: { ...row, raw_text: undefined, result } });
+    res.status(200).json({ ok: true, skipped: false, parsed: { ...row, raw_text: undefined, result } });
   } catch (e) {
     res.status(500).json({ error: e.errors ? JSON.stringify(e.errors) : (e.message || "Error important l'informe") });
   }

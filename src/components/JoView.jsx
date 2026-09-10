@@ -25,7 +25,8 @@ function ImportReportButton({ onImported }) {
     const result = await importRefereeReport(file);
     if (result.ok) {
       const p = result.parsed;
-      setStatus({ ok: true, message: `${p.home_team} - ${p.away_team} (${p.match_date}): puntuació ${p.final_score ?? "—"}.` });
+      const prefix = result.skipped ? "Ja importat abans: " : "";
+      setStatus({ ok: true, message: `${prefix}${p.home_team} - ${p.away_team} (${p.match_date}): puntuació ${p.final_score ?? "—"}.` });
       onImported();
     } else {
       setStatus({ ok: false, message: result.error });
