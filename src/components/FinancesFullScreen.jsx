@@ -1,46 +1,22 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { S, COLORS } from "../lib/styles";
 import { Card, Segmented } from "./ui";
+import { useFinances } from "../lib/financesApi";
 
-// Sample data throughout — no BigQuery source exists yet (per plan decision:
-// ship the screen to spec now, wire the real source later). Shapes mirror
-// what a real feed would provide so swapping later is a data-layer change.
-const NET_WORTH = { total: 50140, deltaAbs: 12091, deltaPct: 31.8, sinceLabel: "l'1 de gener" };
-const MONTHS12 = [38, 40, 39, 42, 44, 43, 46, 45, 47, 48, 49, 50.1];
-const ACCOUNTS = [
-  { name: "CaixaBank Inversions", value: "€31.420", delta: "+4,1%" },
-  { name: "Imagin", value: "€9.860", delta: "+0,3%" },
-  { name: "Revolut", value: "€8.860", delta: "+2,7%" },
-];
-const THIS_MONTH = { ingressos: 2480, despeses: 1660, estalvi: 820 };
-const WEEKLY_SPEND = [280, 310, 260, 340, 290, 250, 320, 340];
-const WEEKLY_BUDGET = 300;
-const CATEGORIES = [
-  { label: "Restaurants", amount: 180, limit: 150, color: COLORS.alert },
-  { label: "Supermercats", amount: 245, limit: 300, color: COLORS.accent },
-  { label: "Transport", amount: 132, limit: 150, color: COLORS.accent },
-  { label: "Subscripcions", amount: 48, limit: 60, color: COLORS.accent },
-  { label: "Oci", amount: 96, limit: 120, color: COLORS.accent },
-  { label: "Altres", amount: 74, limit: 100, color: COLORS.accent },
-];
-const MERCHANTS = [
-  { name: "Mercadona", amount: "€184" }, { name: "Bar Nou", amount: "€72" },
-  { name: "Renfe", amount: "€58" }, { name: "Glovo", amount: "€49" }, { name: "Spotify + iCloud", amount: "€21" },
-];
-const SAVINGS_GOAL = { target: 15000, current: 8240 };
-const MONTHLY_CONTRIB = [
-  { amount: 640, month: "abr" }, { amount: 720, month: "mai" }, { amount: 580, month: "jun" },
-  { amount: 910, month: "jul" }, { amount: 780, month: "ago" }, { amount: 820, month: "set" },
-];
-const FUNDS = [
-  { code: "FBSGLEST", value: "€12.480", change: "+6,2%", up: true },
-  { code: "FBSUSEST", value: "€8.910", change: "+9,4%", up: true },
-  { code: "SELTENST", value: "€5.240", change: "−1,8%", up: false },
-  { code: "DES2060E", value: "€3.120", change: "+3,1%", up: true },
-  { code: "MONREND", value: "€1.670", change: "+0,4%", up: true },
-];
+const SAVINGS_TARGET = 15000; // Personal goal, not a BigQuery field — nothing to fetch here.
+const fmtEur = (n) => `€${Math.round(n).toLocaleString("ca-ES")}`;
+const monthKeyOf = (d) => (d || "").slice(0, 7); // "YYYY-MM" from a date string
+const isoWeekKey = (dateStr) => {
+  const d = new Date(dateStr);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); // nearest Thursday
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  const weekNo = 1 + Math.round(((d - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+  return `${d.getFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+};
 
 function LineChart({ values, color, height = 96 }) {
+  if (values.length < 2) return null;
   const max = Math.max(...values), min = Math.min(...values);
   const w = 330;
   const pts = values.map((v, i) => [
@@ -58,146 +34,206 @@ function LineChart({ values, color, height = 96 }) {
   );
 }
 
-function Resum() {
+function Resum({ data }) {
+  const total = data.netWorth ? Number(data.netWorth.total_amount) : null;
+  const trend = data.netWorthTrend.map((t) => ({ day: t.day, total: Number(t.total) }));
+  const first = trend[0];
+  const delta = total != null && first ? total - first.total : null;
+  const deltaPct = delta != null && first.total ? (delta / first.total) * 100 : null;
+  const sinceLabel = first ? new Date(first.day).toLocaleDateString("ca-ES", { day: "numeric", month: "long" }) : "";
+
   return (
     <>
       <div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 11.5, color: COLORS.textSec }}>Patrimoni net</div>
-        <div style={{ fontSize: 42, fontWeight: 600, letterSpacing: "-0.05em" }}>€{NET_WORTH.total.toLocaleString("ca-ES")}</div>
-        <div style={{ fontSize: 13, fontWeight: 500, color: COLORS.positive }}>+€{NET_WORTH.deltaAbs.toLocaleString("ca-ES")} · +{NET_WORTH.deltaPct}% des de {NET_WORTH.sinceLabel}</div>
+        <div style={{ fontSize: 42, fontWeight: 600, letterSpacing: "-0.05em" }}>{total != null ? fmtEur(total) : "—"}</div>
+        {delta != null && (
+          <div style={{ fontSize: 13, fontWeight: 500, color: delta >= 0 ? COLORS.positive : COLORS.alert }}>
+            {delta >= 0 ? "+" : "−"}{fmtEur(Math.abs(delta))} · {delta >= 0 ? "+" : "−"}{Math.abs(deltaPct).toFixed(1)}% des del {sinceLabel}
+          </div>
+        )}
       </div>
-      <Card>
-        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 8 }}>Últims 12 mesos</div>
-        <LineChart values={MONTHS12} color={COLORS.accent} />
-      </Card>
-      <Card>
-        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Per compte</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-          {ACCOUNTS.map((a) => (
-            <div key={a.name}>
-              <div style={{ fontSize: 10.5, color: COLORS.textSec }}>{a.name}</div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>{a.value}</div>
-              <div style={{ fontSize: 10.5, fontWeight: 500, color: COLORS.positive }}>{a.delta}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-      <Card>
-        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Aquest mes</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, textAlign: "center" }}>
-          <div><div style={{ fontSize: 11, color: COLORS.textSec }}>Ingressos</div><div style={{ fontSize: 19, fontWeight: 600 }}>€{THIS_MONTH.ingressos}</div></div>
-          <div><div style={{ fontSize: 11, color: COLORS.textSec }}>Despeses</div><div style={{ fontSize: 19, fontWeight: 600, color: COLORS.alert }}>€{THIS_MONTH.despeses}</div></div>
-          <div><div style={{ fontSize: 11, color: COLORS.textSec }}>Estalvi</div><div style={{ fontSize: 19, fontWeight: 600, color: COLORS.good }}>€{THIS_MONTH.estalvi}</div></div>
-        </div>
-      </Card>
-    </>
-  );
-}
-
-function Despeses() {
-  const maxBar = Math.max(...WEEKLY_SPEND, WEEKLY_BUDGET);
-  return (
-    <>
-      <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-          <div style={{ fontSize: 14.5, fontWeight: 600 }}>Despesa setmanal</div>
-          <span style={{ fontSize: 11.5, color: COLORS.textSec }}>objectiu €{WEEKLY_BUDGET}</span>
-        </div>
-        <div style={{ position: "relative", height: 104 }}>
-          <div style={{ position: "absolute", left: 0, right: 0, top: 104 - (WEEKLY_BUDGET / maxBar) * 96, borderTop: `1px dashed ${COLORS.alert}` }} />
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: "100%" }}>
-            {WEEKLY_SPEND.map((v, i) => (
-              <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%", gap: 4 }}>
-                <div style={{ width: "100%", height: (v / maxBar) * 96, background: v > WEEKLY_BUDGET ? COLORS.alert : COLORS.accent, borderRadius: "5px 5px 2px 2px" }} />
-                <span style={{ fontSize: 9.5, color: COLORS.textFaint }}>s{i + 1}</span>
+      {trend.length > 1 && (
+        <Card>
+          <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 8 }}>Evolució del patrimoni</div>
+          <LineChart values={trend.map((t) => t.total)} color={COLORS.accent} />
+        </Card>
+      )}
+      {data.netWorth?.by_source?.length > 0 && (
+        <Card>
+          <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Per compte</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+            {data.netWorth.by_source.map((a) => (
+              <div key={a.source}>
+                <div style={{ fontSize: 10.5, color: COLORS.textSec }}>{a.source}</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{fmtEur(Number(a.amount))}</div>
               </div>
             ))}
           </div>
-        </div>
-      </Card>
-      <Card>
-        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Per categoria · setembre</div>
-        {CATEGORIES.map((c) => {
-          const over = c.amount > c.limit;
-          return (
-            <div key={c.label} style={{ marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <span style={{ width: 9, height: 9, borderRadius: 99, background: c.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, flex: 1 }}>{c.label}</span>
-                <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5, fontWeight: 500, color: over ? COLORS.alert : COLORS.text }}>€{c.amount}</span>
-              </div>
-              <div style={{ height: 4, borderRadius: 99, background: COLORS.track, opacity: 0.75 }}>
-                <div style={{ height: 4, borderRadius: 99, width: `${Math.min(100, (c.amount / c.limit) * 100)}%`, background: over ? COLORS.alert : c.color }} />
-              </div>
-            </div>
-          );
-        })}
-      </Card>
-      <Card>
-        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Top comerços</div>
-        {MERCHANTS.map((m, i) => (
-          <div key={m.name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderTop: i ? `1px solid ${COLORS.borderSoft}` : "none" }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: COLORS.accent, flexShrink: 0 }} />
-            <span style={{ fontSize: 13, flex: 1 }}>{m.name}</span>
-            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5, fontWeight: 500 }}>{m.amount}</span>
+        </Card>
+      )}
+      {data.monthly[0] && (
+        <Card>
+          <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Aquest mes</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, textAlign: "center" }}>
+            <div><div style={{ fontSize: 11, color: COLORS.textSec }}>Ingressos</div><div style={{ fontSize: 19, fontWeight: 600 }}>{fmtEur(Number(data.monthly[0].income))}</div></div>
+            <div><div style={{ fontSize: 11, color: COLORS.textSec }}>Despeses</div><div style={{ fontSize: 19, fontWeight: 600, color: COLORS.alert }}>{fmtEur(Math.abs(Number(data.monthly[0].expense)))}</div></div>
+            <div><div style={{ fontSize: 11, color: COLORS.textSec }}>Net</div><div style={{ fontSize: 19, fontWeight: 600, color: Number(data.monthly[0].net) >= 0 ? COLORS.good : COLORS.alert }}>{fmtEur(Number(data.monthly[0].net))}</div></div>
           </div>
-        ))}
-      </Card>
-      <div style={{ ...S.card, borderLeft: `3px solid ${COLORS.warn}`, display: "flex", gap: 10 }}>
-        <span>🍽️</span>
-        <span style={{ fontSize: 13, lineHeight: 1.45 }}>Has gastat €180 en restaurants aquest mes. El límit és €150. Considera reduir 2 sopars fora.</span>
-      </div>
+        </Card>
+      )}
     </>
   );
 }
 
-function Estalvi() {
-  const pct = SAVINGS_GOAL.current / SAVINGS_GOAL.target;
-  const maxContrib = Math.max(...MONTHLY_CONTRIB.map((c) => c.amount));
+function Despeses({ data }) {
+  const [tipologiaFilter, setTipologiaFilter] = useState("all");
+  const thisMonth = monthKeyOf(data.transactions[0]?.booking_date) || monthKeyOf(new Date().toISOString());
+  const expenses = data.transactions.filter((t) => Number(t.amount) < 0);
+
+  const weekly = useMemo(() => {
+    const byWeek = {};
+    expenses.forEach((t) => { const wk = isoWeekKey(t.booking_date); byWeek[wk] = (byWeek[wk] || 0) + Math.abs(Number(t.amount)); });
+    return Object.entries(byWeek).sort(([a], [b]) => a.localeCompare(b)).slice(-8);
+  }, [data.transactions]);
+
+  const monthCats = data.spendByCategory.filter((c) => monthKeyOf(c.month) === thisMonth);
+  const tipologiaLabel = (key) => (key ? data.tipologiaLabels.find((t) => t.tipologia_key === key)?.display_label : "Sense classificar");
+  const visibleCats = tipologiaFilter === "all" ? monthCats : monthCats.filter((c) => (c.tipologia || "unclassified") === tipologiaFilter);
+  const maxCatAmount = Math.max(1, ...visibleCats.map((c) => Math.abs(Number(c.total))));
+
+  const merchants = useMemo(() => {
+    const byMerchant = {};
+    expenses.filter((t) => monthKeyOf(t.booking_date) === thisMonth).forEach((t) => {
+      const name = t.counterparty || t.description || "Desconegut";
+      byMerchant[name] = (byMerchant[name] || 0) + Math.abs(Number(t.amount));
+    });
+    return Object.entries(byMerchant).sort(([, a], [, b]) => b - a).slice(0, 5);
+  }, [data.transactions]);
+
+  const maxWeek = Math.max(1, ...weekly.map(([, v]) => v));
+  const topCat = [...visibleCats].sort((a, b) => Math.abs(Number(b.total)) - Math.abs(Number(a.total)))[0];
+
+  return (
+    <>
+      {weekly.length > 0 && (
+        <Card>
+          <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Despesa per setmana</div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 104 }}>
+            {weekly.map(([wk, v]) => (
+              <div key={wk} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%", gap: 4 }}>
+                <div style={{ width: "100%", height: (v / maxWeek) * 96, background: COLORS.accent, borderRadius: "5px 5px 2px 2px" }} />
+                <span style={{ fontSize: 9, color: COLORS.textFaint }}>{wk.slice(6)}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 600 }}>Per categoria</div>
+          <span style={{ fontSize: 11.5, color: COLORS.textSec }}>{new Date(thisMonth + "-02").toLocaleDateString("ca-ES", { month: "long" })}</span>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+          <button onClick={() => setTipologiaFilter("all")} style={{ ...S.chip, background: tipologiaFilter === "all" ? COLORS.accent + "22" : "#fff", color: tipologiaFilter === "all" ? COLORS.accent : COLORS.textSec, borderColor: COLORS.border }}>Totes</button>
+          {data.tipologiaLabels.map((t) => (
+            <button key={t.tipologia_key} onClick={() => setTipologiaFilter(t.tipologia_key)} style={{ ...S.chip, background: tipologiaFilter === t.tipologia_key ? COLORS.accent + "22" : "#fff", color: tipologiaFilter === t.tipologia_key ? COLORS.accent : COLORS.textSec, borderColor: COLORS.border }}>{t.display_label}</button>
+          ))}
+          <button onClick={() => setTipologiaFilter("unclassified")} style={{ ...S.chip, background: tipologiaFilter === "unclassified" ? COLORS.accent + "22" : "#fff", color: tipologiaFilter === "unclassified" ? COLORS.accent : COLORS.textSec, borderColor: COLORS.border }}>Sense classificar</button>
+        </div>
+        {visibleCats.length === 0 && <p style={S.muted}>Cap despesa categoritzada aquest mes amb aquest filtre.</p>}
+        {visibleCats.sort((a, b) => Math.abs(Number(b.total)) - Math.abs(Number(a.total))).map((c) => (
+          <div key={`${c.category}-${c.tipologia}`} style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 13, flex: 1 }}>{c.category === "Uncategorized" ? "Sense categoria" : c.category}</span>
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5, fontWeight: 500 }}>{fmtEur(Math.abs(Number(c.total)))}</span>
+            </div>
+            <div style={{ height: 4, borderRadius: 99, background: COLORS.track, opacity: 0.75 }}>
+              <div style={{ height: 4, borderRadius: 99, width: `${(Math.abs(Number(c.total)) / maxCatAmount) * 100}%`, background: COLORS.accent }} />
+            </div>
+          </div>
+        ))}
+      </Card>
+      {merchants.length > 0 && (
+        <Card>
+          <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Top comerços · aquest mes</div>
+          {merchants.map(([name, amount], i) => (
+            <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderTop: i ? `1px solid ${COLORS.borderSoft}` : "none" }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: COLORS.accent, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, flex: 1 }}>{name}</span>
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12.5, fontWeight: 500 }}>{fmtEur(amount)}</span>
+            </div>
+          ))}
+        </Card>
+      )}
+      {topCat && (
+        <div style={{ ...S.card, borderLeft: `3px solid ${COLORS.warn}`, display: "flex", gap: 10 }}>
+          <span>💡</span>
+          <span style={{ fontSize: 13, lineHeight: 1.45 }}>La categoria amb més despesa aquest mes és {topCat.category === "Uncategorized" ? "sense categoritzar" : topCat.category}: {fmtEur(Math.abs(Number(topCat.total)))}.</span>
+        </div>
+      )}
+    </>
+  );
+}
+
+function Estalvi({ data }) {
+  const totalInvested = data.investments.reduce((sum, f) => sum + (f.value_eur != null ? Number(f.value_eur) : 0), 0);
+  const pct = Math.min(1, totalInvested / SAVINGS_TARGET);
+
+  const contribByMonth = useMemo(() => {
+    const m = {};
+    data.transactions
+      .filter((t) => t.tipologia === "savings" || t.category === "Fons d'inversió")
+      .forEach((t) => { const mk = monthKeyOf(t.booking_date); m[mk] = (m[mk] || 0) + Math.abs(Number(t.amount)); });
+    return Object.entries(m).sort(([a], [b]) => a.localeCompare(b)).slice(-6);
+  }, [data.transactions]);
+  const maxContrib = Math.max(1, ...contribByMonth.map(([, v]) => v));
+
   return (
     <>
       <Card>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Estalviar €{SAVINGS_GOAL.target.toLocaleString("ca-ES")} aquest any</div>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Estalviar {fmtEur(SAVINGS_TARGET)} aquest any</div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 30, fontWeight: 600, color: COLORS.accent }}>€{SAVINGS_GOAL.current.toLocaleString("ca-ES")}</span>
-          <span style={{ fontSize: 12.5, color: COLORS.textSec }}>aconseguits · {Math.round(pct * 100)}%</span>
+          <span style={{ fontSize: 30, fontWeight: 600, color: COLORS.accent }}>{fmtEur(totalInvested)}</span>
+          <span style={{ fontSize: 12.5, color: COLORS.textSec }}>invertits · {Math.round(pct * 100)}%</span>
         </div>
         <div style={{ height: 7, borderRadius: 99, background: COLORS.track }}>
           <div style={{ height: 7, borderRadius: 99, width: `${pct * 100}%`, background: COLORS.accent }} />
         </div>
       </Card>
-      <Card>
-        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Aportació mensual</div>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 70 }}>
-          {MONTHLY_CONTRIB.map((c) => (
-            <div key={c.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, color: COLORS.textSec }}>€{c.amount}</span>
-              <div style={{ width: "100%", height: (c.amount / maxContrib) * 44, background: COLORS.accent, borderRadius: "4px 4px 2px 2px" }} />
-              <span style={{ fontSize: 10, color: COLORS.textFaint }}>{c.month}</span>
+      {contribByMonth.length > 0 && (
+        <Card>
+          <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Aportació mensual</div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 70 }}>
+            {contribByMonth.map(([mk, amount]) => (
+              <div key={mk} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, color: COLORS.textSec }}>{fmtEur(amount)}</span>
+                <div style={{ width: "100%", height: (amount / maxContrib) * 44, background: COLORS.accent, borderRadius: "4px 4px 2px 2px" }} />
+                <span style={{ fontSize: 10, color: COLORS.textFaint }}>{new Date(mk + "-02").toLocaleDateString("ca-ES", { month: "short" })}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+      {data.investments.length > 0 && (
+        <Card>
+          <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Fons d'inversió</div>
+          {data.investments.map((f, i) => (
+            <div key={f.fund_code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: i ? `1px solid ${COLORS.borderSoft}` : "none" }}>
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "#6d6259", flex: 1 }}>{f.name || f.fund_code}</span>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>{f.value_eur != null ? fmtEur(Number(f.value_eur)) : "—"}</span>
             </div>
           ))}
-        </div>
-      </Card>
-      <Card>
-        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>Fons d'inversió</div>
-        {FUNDS.map((f, i) => (
-          <div key={f.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: i ? `1px solid ${COLORS.borderSoft}` : "none" }}>
-            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "#6d6259", flex: 1 }}>{f.code}</span>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>{f.value}</span>
-            <span style={{ fontSize: 12, fontWeight: 500, width: 52, textAlign: "right", color: f.up ? COLORS.positive : COLORS.alert }}>{f.change}</span>
-          </div>
-        ))}
-      </Card>
-      <div style={{ ...S.card, borderLeft: `3px solid ${COLORS.accent}`, display: "flex", gap: 10 }}>
-        <span>📈</span>
-        <span style={{ fontSize: 13, lineHeight: 1.45 }}>Al ritme actual, arribaràs a €13.800 al desembre. Necessites +€100/mes per assolir l'objectiu.</span>
-      </div>
+        </Card>
+      )}
     </>
   );
 }
 
 export function FinancesFullScreen({ onClose }) {
   const [tab, setTab] = useState("resum");
+  const { data, loading, error } = useFinances();
+
   return (
     <div style={S.fullScreen}>
       <div style={S.fullScreenHeader}>
@@ -209,9 +245,15 @@ export function FinancesFullScreen({ onClose }) {
         <Segmented opts={[{ id: "resum", label: "Resum" }, { id: "despeses", label: "Despeses" }, { id: "estalvi", label: "Estalvi" }]} val={tab} set={setTab} />
       </div>
       <div style={{ padding: "6px 16px 24px" }}>
-        {tab === "resum" && <Resum />}
-        {tab === "despeses" && <Despeses />}
-        {tab === "estalvi" && <Estalvi />}
+        {loading && <p style={S.muted}>Carregant dades reals...</p>}
+        {error && <p style={{ ...S.muted, color: COLORS.alert }}>Error carregant finances: {error}</p>}
+        {data && (
+          <>
+            {tab === "resum" && <Resum data={data} />}
+            {tab === "despeses" && <Despeses data={data} />}
+            {tab === "estalvi" && <Estalvi data={data} />}
+          </>
+        )}
       </div>
     </div>
   );

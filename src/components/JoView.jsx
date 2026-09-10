@@ -2,12 +2,13 @@ import { S, COLORS } from "../lib/styles";
 import { Card } from "./ui";
 import { last7Keys } from "../lib/domainStats";
 import { todayKey } from "../lib/utils";
+import { useFinances } from "../lib/financesApi";
 
 // Sample data for goals/history without a real source yet (career ratings,
-// finances) — same "ship to spec now, wire later" approach as Finances.
-const GOALS = [
+// social log) — same "ship to spec now, wire later" approach the finances
+// entry used to follow, before api/finances.js landed.
+const GOALS_STATIC = [
   { label: "Ascendir a 2ª División", value: "11 partits · 8.1", pct: 0.62, color: COLORS.domainRef, source: "RFEF · valoracions", status: "en camí" },
-  { label: "Estalviar €15.000 aquest any", value: "€8.240", pct: 0.55, color: COLORS.warn, source: "BigQuery · viu", status: "en camí" },
   { label: "Veure la Muntsa 3 cops/setmana", value: "2.4 de mitjana", pct: 0.78, color: COLORS.accent, source: "Registre social", status: "atenció" },
   { label: "Mantenir son >80 de mitjana", value: "70 de 80", pct: 0.85, color: COLORS.good, source: "Garmin · viu", status: "atenció" },
 ];
@@ -32,6 +33,18 @@ function TrendCard({ label, value, delta, up, points, color }) {
 }
 
 export function JoView({ global, allData, garminSleep, onOpenFull }) {
+  const { data: fin } = useFinances();
+  const netWorth = fin?.netWorth ? Number(fin.netWorth.total_amount) : null;
+  const trend = fin?.netWorthTrend?.map((t) => Number(t.total)) || [];
+  const firstNetWorth = trend[0];
+  const netWorthDelta = netWorth != null && firstNetWorth ? netWorth - firstNetWorth : null;
+  const netWorthDeltaPct = netWorthDelta != null && firstNetWorth ? (netWorthDelta / firstNetWorth) * 100 : null;
+  const savingsCurrent = fin ? fin.investments.reduce((s, f) => s + (f.value_eur != null ? Number(f.value_eur) : 0), 0) : null;
+  const savingsPct = savingsCurrent != null ? Math.min(1, savingsCurrent / 15000) : 0;
+  const GOALS = savingsCurrent != null
+    ? [GOALS_STATIC[0], { label: "Estalviar €15.000 aquest any", value: `€${Math.round(savingsCurrent).toLocaleString("ca-ES")}`, pct: savingsPct, color: COLORS.warn, source: "BigQuery · viu", status: savingsPct >= 0.66 ? "en camí" : "atenció" }, ...GOALS_STATIC.slice(1)]
+    : GOALS_STATIC;
+
   const dates = last7Keys();
   const scores = dates.map((dk) => garminSleep?.[dk]?.score).filter((s) => s != null);
   const hours = dates.map((dk) => garminSleep?.[dk]?.hours).filter((h) => h != null);
@@ -65,14 +78,14 @@ export function JoView({ global, allData, garminSleep, onOpenFull }) {
           <span style={{ color: COLORS.textSec }}>›</span>
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 29, fontWeight: 600 }}>€50.140</span>
-          <span style={{ fontSize: 12, fontWeight: 500, color: COLORS.positive }}>+€12.091 · +31,8%</span>
+          <span style={{ fontSize: 29, fontWeight: 600 }}>{netWorth != null ? `€${Math.round(netWorth).toLocaleString("ca-ES")}` : "—"}</span>
+          {netWorthDelta != null && (
+            <span style={{ fontSize: 12, fontWeight: 500, color: netWorthDelta >= 0 ? COLORS.positive : COLORS.alert }}>
+              {netWorthDelta >= 0 ? "+" : "−"}€{Math.round(Math.abs(netWorthDelta)).toLocaleString("ca-ES")} · {netWorthDelta >= 0 ? "+" : "−"}{Math.abs(netWorthDeltaPct).toFixed(1)}%
+            </span>
+          )}
         </div>
-        <div style={{ height: 6, borderRadius: 99, background: COLORS.track, marginBottom: 8 }}><div style={{ height: 6, borderRadius: 99, width: "55%", background: COLORS.accent }} /></div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: COLORS.textSec }}>
-          <span>Estalvi anual €8.240 / €15.000</span>
-          <span style={{ color: COLORS.alert }}>€340 / €300 aquesta setmana</span>
-        </div>
+        <div style={{ height: 6, borderRadius: 99, background: COLORS.track }}><div style={{ height: 6, borderRadius: 99, width: `${savingsPct * 100}%`, background: COLORS.accent }} /></div>
       </button>
 
       <div style={S.sectionHeader}>Objectius de l'any</div>
