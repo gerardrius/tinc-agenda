@@ -65,3 +65,31 @@ export async function createEvent(token, { summary, description, location, start
   const data = await res.json();
   return data.id;
 }
+
+// Edits an existing event in place (PATCH keeps whatever fields — like the
+// task-link extendedProperty — the caller doesn't pass).
+export async function updateEvent(token, eventId, { summary, description, location, startISO, endISO, topic, taskId, calendarId = "primary" }) {
+  const privateProps = { ...(topic ? { [TOPIC_PROPERTY]: topic } : {}), ...(taskId ? { [TASK_PROPERTY]: taskId } : {}) };
+  const body = {
+    summary, description, location,
+    start: { dateTime: startISO },
+    end: { dateTime: endISO },
+    ...(Object.keys(privateProps).length ? { extendedProperties: { private: privateProps } } : {}),
+  };
+  const url = `${API_BASE}/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) { const e = new Error("Token caducat"); e.code = 401; throw e; }
+  if (!res.ok) throw new Error(`Error actualitzant event (${res.status})`);
+  return res.json();
+}
+
+export async function deleteEvent(token, eventId, calendarId = "primary") {
+  const url = `${API_BASE}/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
+  const res = await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 401) { const e = new Error("Token caducat"); e.code = 401; throw e; }
+  if (!res.ok && res.status !== 410) throw new Error(`Error eliminant event (${res.status})`);
+}

@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { TABS, DOMAINS, RITUAL_BANNERS } from "./lib/constants";
 import { defaultDay, defaultGlobal } from "./lib/defaults";
 import { storage } from "./lib/storage";
-import { todayKey, uid, fmtDate } from "./lib/utils";
+import { todayKey, localDateKey, uid, fmtDate } from "./lib/utils";
 import { weekStartKey } from "./lib/taskRules";
 import { S, COLORS } from "./lib/styles";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
 import { getSession, onAuthStateChange, fetchAll, upsertEntry, signOut } from "./lib/remoteStorage";
 import * as googleAuth from "./lib/googleAuth";
-import { fetchEvents, createEvent } from "./lib/googleCalendar";
+import { fetchEvents, createEvent, updateEvent, deleteEvent } from "./lib/googleCalendar";
 import { useGarminSleepByDate } from "./lib/sleepMapApi";
 import { deriveMatchState, detectConfirmation } from "./lib/matchCycle";
 import { AuthScreen } from "./components/AuthScreen";
@@ -143,6 +143,21 @@ export default function App() {
 
   const toggleHabit = (id) => persist({ ...day, habits: { ...day.habits, [id]: !day.habits[id] } });
 
+  // Actually relocates a task to tomorrow's day record (used to just bump a
+  // movedCount counter and leave the task sitting in today's list, which
+  // looked like a no-op button).
+  const moveTaskToTomorrow = (id) => {
+    const task = (day.tasks || []).find((t) => t.id === id);
+    if (!task) return;
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    const tmk = localDateKey(tomorrow);
+    const tomorrowDay = allData[tmk] || defaultDay();
+    persistDates({
+      [todayKey()]: { ...day, tasks: (day.tasks || []).filter((t) => t.id !== id) },
+      [tmk]: { ...tomorrowDay, tasks: [...(tomorrowDay.tasks || []), { ...task, movedCount: (task.movedCount || 0) + 1 }] },
+    });
+  };
+
   /* ── Google Calendar sync ──
      OAuth via Google Identity Services (src/lib/googleAuth.js). First call
      triggers the consent popup; subsequent calls just refresh events. Also
@@ -213,6 +228,38 @@ export default function App() {
     return eventId;
   };
 
+  // Edits/deletes an existing Google Calendar event from the Agenda sheet,
+  // refreshing afterward so the timeline reflects the change immediately.
+  const handleUpdateEvent = async (eventId, payload) => {
+    let token = googleAuth.getToken();
+    if (!token) token = await googleAuth.connect();
+    try {
+      await updateEvent(token, eventId, payload);
+    } catch (e) {
+      if (e.code === 401) {
+        googleAuth.forgetAccessToken();
+        const freshToken = await googleAuth.connect();
+        await updateEvent(freshToken, eventId, payload);
+      } else throw e;
+    }
+    await fetchCalendar();
+  };
+
+  const handleDeleteEvent = async (eventId) => {
+    let token = googleAuth.getToken();
+    if (!token) token = await googleAuth.connect();
+    try {
+      await deleteEvent(token, eventId);
+    } catch (e) {
+      if (e.code === 401) {
+        googleAuth.forgetAccessToken();
+        const freshToken = await googleAuth.connect();
+        await deleteEvent(freshToken, eventId);
+      } else throw e;
+    }
+    await fetchCalendar();
+  };
+
   // Wraps handleCreateEvent for the sheet rendered at this level: when the
   // sheet was opened to create a task/priority (creatingSlot.linkTask set),
   // also writes the task itself into today's tasks, tagged with the new
@@ -279,13 +326,13 @@ export default function App() {
           <TodayView
             day={day} global={global} allData={allData} garminSleep={garminSleep} onRefreshGarminSleep={refetchGarminSleep} u={u} toggleHabit={toggleHabit} persist={persist} saveGlobal={saveGlobal}
             matchState={matchState} calEvents={calEvents} bannerToShow={bannerToShow} onOpenRitual={setRitual}
-            onDismissBanner={dismissBanner} onOpenFull={setFull} onOpenSheet={setSheet} onRequestCreateSlot={setCreatingSlot}
+            onDismissBanner={dismissBanner} onOpenFull={setFull} onOpenSheet={setSheet} onRequestCreateSlot={setCreatingSlot} onMoveTaskToTomorrow={moveTaskToTomorrow}
           />
         )}
         {tab === "agenda" && (
-          <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} onRequestCreateSlot={setCreatingSlot} day={day} />
+          <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} onRequestCreateSlot={setCreatingSlot} day={day} onUpdateEvent={handleUpdateEvent} onDeleteEvent={handleDeleteEvent} />
         )}
-        {tab === "setmana" && <SetmanaView day={day} global={global} allData={allData} garminSleep={garminSleep} domainScores={domainScores} onOpenSheet={setSheet} onOpenFull={setFull} />}
+        {tab === "setmana" && <SetmanaView day={day} global={global} allData={allData} garminSleep={garminSleep} domainScores={domainScores} calEvents={calEvents} onOpenSheet={setSheet} onOpenFull={setFull} />}
         {tab === "jo" && <JoView day={day} global={global} allData={allData} garminSleep={garminSleep} onOpenFull={setFull} />}
       </div>
 
@@ -311,7 +358,7 @@ export default function App() {
         ))}
       </div>
 
-      {sheet && <DomainSheet domain={sheet} onClose={() => setSheet(null)} global={global} allData={allData} garminSleep={garminSleep} domainScores={domainScores} />}
+      {sheet && <DomainSheet domain={sheet} onClose={() => setSheet(null)} global={global} allData={allData} garminSleep={garminSleep} domainScores={domainScores} calEvents={calEvents} />}
       {full === "son" && <SonFullScreen garminSleep={garminSleep} matchState={matchState} onClose={() => setFull(null)} />}
       {full === "fin" && <FinancesFullScreen onClose={() => setFull(null)} />}
       {ritual === "nit" && <RitualNocturna day={day} allData={allData} calEvents={calEvents} persistDates={persistDates} onClose={() => setRitual(null)} />}

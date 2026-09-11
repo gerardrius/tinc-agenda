@@ -3,7 +3,7 @@ import { S, COLORS } from "../lib/styles";
 import { Card, Sheet, SheetCloseBtn, ProgressBar } from "./ui";
 import { WHEEL_AXES, DOMAINS } from "../lib/constants";
 import { computeDomainStats, last7Keys } from "../lib/domainStats";
-import { fmtTime } from "../lib/utils";
+import { fmtTime, fmtHours } from "../lib/utils";
 
 function NudgeCard({ emoji, color, text, actionLabel, onAction }) {
   return (
@@ -54,12 +54,12 @@ export function BalanceWheel({ scores }) {
   );
 }
 
-export function SetmanaView({ day, global, allData, garminSleep, domainScores, onOpenSheet, onOpenFull }) {
+export function SetmanaView({ day, global, allData, garminSleep, domainScores, calEvents, onOpenSheet, onOpenFull }) {
   const [open, setOpen] = useState({});
   const scores = {
     arbitratge: domainScores?.arbitratge ?? 7,
     relacions: domainScores?.relacions ?? 6,
-    salut: computeDomainStats({ id: "salut", global, allData, garminSleep, domainScores }).value,
+    salut: computeDomainStats({ id: "salut", global, allData, garminSleep, domainScores, calEvents }).value,
     finances: domainScores?.finances ?? 6,
     feina: 6,
   };
@@ -71,9 +71,9 @@ export function SetmanaView({ day, global, allData, garminSleep, domainScores, o
   const range = `${monday.getDate()} – ${sunday.getDate()} de ${sunday.toLocaleDateString("ca-ES", { month: "long" })}`;
 
   const nudges = [];
-  const relStats = computeDomainStats({ id: "relacions", global, allData, garminSleep, domainScores });
+  const relStats = computeDomainStats({ id: "relacions", global, allData, garminSleep, domainScores, calEvents });
   if (relStats.value === 0) nudges.push({ emoji: "💛", color: COLORS.accent, text: "No has vist ningú proper en 4 dies. Tens plans aviat?", actionLabel: "Obrir agenda", onAction: () => onOpenSheet("relacions") });
-  const finStats = computeDomainStats({ id: "finances", global, allData, garminSleep, domainScores });
+  const finStats = computeDomainStats({ id: "finances", global, allData, garminSleep, domainScores, calEvents });
   if (parseFloat(finStats.value.replace("€", "")) > 300) nudges.push({ emoji: "💰", color: COLORS.warn, text: `Has gastat ${finStats.value} aquesta setmana. El teu objectiu és €300.`, actionLabel: "Veure finances", onAction: () => onOpenFull("fin") });
 
   const toggleOpen = (id) => setOpen({ ...open, [id]: !open[id] });
@@ -97,7 +97,7 @@ export function SetmanaView({ day, global, allData, garminSleep, domainScores, o
 
       <div style={S.sectionHeader}>Registre setmanal</div>
       {WHEEL_AXES.map((ax) => {
-        const stats = computeDomainStats({ id: ax.id, global, allData, garminSleep, domainScores });
+        const stats = computeDomainStats({ id: ax.id, global, allData, garminSleep, domainScores, calEvents });
         const isOpen = open[ax.id];
         return (
           <Card key={ax.id}>
@@ -123,10 +123,15 @@ export function SetmanaView({ day, global, allData, garminSleep, domainScores, o
 
 // Shared domain bottom sheet — opened from the domain strip (any tab), the
 // wheel chips, or the weekly log cards / nudges.
-export function DomainSheet({ domain, onClose, global, allData, garminSleep, domainScores }) {
+export function DomainSheet({ domain, onClose, global, allData, garminSleep, domainScores, calEvents }) {
+  const [openBar, setOpenBar] = useState(null);
   if (!domain) return null;
-  const stats = computeDomainStats({ id: domain, global, allData: allData || {}, garminSleep, domainScores });
+  const stats = computeDomainStats({ id: domain, global, allData: allData || {}, garminSleep, domainScores, calEvents });
   const maxBar = Math.max(1, ...stats.bars.map((b) => b.v));
+  // Only arbitratge/relacions bars carry activities/avgRating (hours-based,
+  // tap-for-detail); every other domain keeps the plain count chart.
+  const hasActivity = stats.bars.some((b) => b.activities);
+  const activeBar = openBar != null ? stats.bars[openBar] : null;
   return (
     <Sheet onClose={onClose}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -139,13 +144,42 @@ export function DomainSheet({ domain, onClose, global, allData, garminSleep, dom
       </div>
       <Card>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 70 }}>
-          {stats.bars.map((b, i) => (
-            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <div style={{ width: "100%", height: Math.max(3, (b.v / maxBar) * 56), background: stats.color, opacity: 0.35 + 0.65 * (i / (stats.bars.length - 1 || 1)), borderRadius: "5px 5px 2px 2px" }} />
-              <span style={{ fontSize: 9.5, color: COLORS.textFaint }}>{b.label}</span>
-            </div>
-          ))}
+          {stats.bars.map((b, i) => {
+            // Rating-driven intensity where we have one (darker = more
+            // useful time), otherwise the original left-to-right fade.
+            const opacity = b.avgRating != null ? 0.3 + 0.7 * (b.avgRating / 5) : 0.35 + 0.65 * (i / (stats.bars.length - 1 || 1));
+            const Tag = hasActivity ? "button" : "div";
+            return (
+              <Tag key={i} onClick={hasActivity ? () => setOpenBar(openBar === i ? null : i) : undefined}
+                title={hasActivity ? (b.activities.length ? b.activities.map((a) => `${a.title} · ${fmtHours(a.hours)}${a.rating ? ` · ${a.rating}/5` : ""}`).join("\n") : "Cap activitat") : undefined}
+                style={{
+                  flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, background: "none", border: "none", padding: 0,
+                  cursor: hasActivity ? "pointer" : "default", fontFamily: "inherit",
+                }}>
+                <div style={{
+                  width: "100%", height: Math.max(3, (b.v / maxBar) * 56), background: stats.color, opacity, borderRadius: "5px 5px 2px 2px",
+                  outline: openBar === i ? `2px solid ${stats.color}` : "none",
+                }} />
+                <span style={{ fontSize: 9.5, color: openBar === i ? stats.color : COLORS.textFaint, fontWeight: openBar === i ? 700 : 400 }}>{b.label}</span>
+              </Tag>
+            );
+          })}
         </div>
+        {activeBar && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${COLORS.borderSoft}` }}>
+            {activeBar.hours != null && <div style={{ fontSize: 11.5, color: COLORS.textSec, marginBottom: 6 }}>{fmtHours(activeBar.hours)} dedicades · {activeBar.label}</div>}
+            {activeBar.activities.length === 0 && <div style={{ fontSize: 12, color: COLORS.textFaint }}>Cap activitat aquest dia.</div>}
+            {activeBar.activities.map((a, j) => (
+              <div key={j} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5, padding: "4px 0" }}>
+                <span style={{ color: COLORS.text }}>{a.title}{!a.linked && <span style={{ color: COLORS.textFaint }}> · sense event</span>}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <span style={{ fontFamily: "'JetBrains Mono',monospace", color: COLORS.textSec }}>{fmtHours(a.hours)}</span>
+                  {a.rating != null && <span style={{ color: stats.color, fontWeight: 600 }}>{"★".repeat(a.rating)}{"☆".repeat(5 - a.rating)}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
       <Card>
         {stats.kv.map(([k, v], i) => (

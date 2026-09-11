@@ -1,6 +1,6 @@
 import { COLORS } from "./styles";
 import { HABIT_POOL } from "./constants";
-import { localDateKey, weekdayShort } from "./utils";
+import { localDateKey, weekdayShort, fmtHours } from "./utils";
 
 // Oldest → newest date keys for the trailing 7 days, ending today.
 export function last7Keys() {
@@ -22,11 +22,45 @@ function topicTaskCounts(allData, dates, topicId, doneOnly = true) {
   return dates.map((dk) => (allData[dk]?.tasks || []).filter((t) => t.topic === topicId && (!doneOnly || t.done)).length);
 }
 
+// A completed task not yet linked to a real calendar event (older tasks,
+// or ones added via the plain "+ Afegir tasca" box) still needs *some*
+// duration to plot — half an hour is a deliberately modest guess so a
+// linked event's real duration always dominates once one exists.
+const FALLBACK_TASK_HOURS = 0.5;
+
+// Per-day {hours, activities[]} for completed tasks tagged `topicId` — the
+// hours dimension the weekly bars use once a task carries a calendarEventId
+// (set when it's created from Avui's "Prioritat"/"Tasca" event sheet, see
+// App.jsx's handleCreateEventForSheet). Each activity also carries the
+// task's 1–5 self-rating so the bar's color can reflect how useful the
+// time was, not just how much of it there was.
+function topicTaskActivity(allData, calEvents, dates, topicId) {
+  const eventsById = {};
+  (calEvents || []).forEach((e) => { eventsById[e.id] = e; });
+  return dates.map((dk) => {
+    const tasks = (allData[dk]?.tasks || []).filter((t) => t.topic === topicId && t.done);
+    const activities = tasks.map((t) => {
+      const ev = t.calendarEventId ? eventsById[t.calendarEventId] : null;
+      const hours = ev?.start && ev?.end ? Math.max(0, (new Date(ev.end) - new Date(ev.start)) / 3600000) : FALLBACK_TASK_HOURS;
+      return { title: t.label, hours, rating: t.rating ?? null, linked: Boolean(ev) };
+    });
+    return { hours: activities.reduce((s, a) => s + a.hours, 0), activities };
+  });
+}
+
+// Average of an activities list's set ratings (nulls skipped), or null if
+// none of that day's activities has been rated yet — lets the bar fall back
+// to its default color instead of pretending an unrated day was mediocre.
+function avgRating(activities) {
+  const rated = activities.map((a) => a.rating).filter((r) => r != null);
+  return rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : null;
+}
+
 // Shared per-domain stats used by both SetmanaView's weekly log cards and
 // the domain bottom sheet (README "Domain bottom sheet"). Real where the
 // data exists (sleep, social log, expenses, habits, tasks); sample-shaped
 // fallback for finances until a real BigQuery source lands.
-export function computeDomainStats({ id, global, allData, garminSleep, domainScores }) {
+export function computeDomainStats({ id, global, allData, garminSleep, domainScores, calEvents }) {
   const dates = last7Keys();
 
   if (id === "son") {
@@ -37,7 +71,7 @@ export function computeDomainStats({ id, global, allData, garminSleep, domainSco
       emoji: "💤", title: "Son", color: COLORS.good,
       value: avgScore != null ? Math.round(avgScore) : "—", qualifier: "puntuació mitjana",
       bars: scores.map((v, i) => ({ v: v ?? 0, label: weekdayShort(dates[i]) })),
-      kv: [["Hores mitjanes", avg(hours) != null ? `${avg(hours).toFixed(1)}h` : "—"], ["Ahir", scores[6] ?? "—"]],
+      kv: [["Hores mitjanes", fmtHours(avg(hours))], ["Ahir", scores[6] ?? "—"]],
       insight: avgScore != null && avgScore < 75
         ? "Rendiment en risc si arribes al partit així. Avança l'hora de dormir 40 min tres nits."
         : "Setmana de son sòlida. Mantén la rutina.",
@@ -46,13 +80,15 @@ export function computeDomainStats({ id, global, allData, garminSleep, domainSco
 
   if (id === "relacions") {
     const socialCounts = dates.map((dk) => (allData[dk]?.social || []).length);
-    const taskCounts = topicTaskCounts(allData, dates, "relacions");
-    const counts = socialCounts.map((v, i) => v + taskCounts[i]);
-    const total = counts.reduce((a, b) => a + b, 0);
+    const taskActivity = topicTaskActivity(allData, calEvents, dates, "relacions");
+    const taskCounts = taskActivity.map((a) => a.activities.length);
+    const total = socialCounts.reduce((a, b) => a + b, 0) + taskCounts.reduce((a, b) => a + b, 0);
     return {
       emoji: "💛", title: "Relacions", color: COLORS.accent,
       value: total, qualifier: "activitats aquesta setmana",
-      bars: counts.map((v, i) => ({ v, label: weekdayShort(dates[i]) })),
+      // Hours dedicated (via calendar-linked tasks), not just a headcount —
+      // the bar's tint reflects how useful that time felt (1–5 self-rating).
+      bars: taskActivity.map((a, i) => ({ v: a.hours, label: weekdayShort(dates[i]), activities: a.activities, avgRating: avgRating(a.activities) })),
       kv: [["Entrades socials", String(socialCounts.reduce((a, b) => a + b, 0))], ["Tasques completades", String(taskCounts.reduce((a, b) => a + b, 0))]],
       insight: total === 0
         ? "És el domini més fluix del mes. Una cosa concreta a l'agenda val més que la intenció."
@@ -108,12 +144,17 @@ export function computeDomainStats({ id, global, allData, garminSleep, domainSco
   // arbitratge
   const score = domainScores?.arbitratge ?? 7;
   const upcoming = (global.matches || []).slice(-1)[0];
-  const arbTaskDone = topicTaskCounts(allData, dates, "arbitratge").reduce((a, b) => a + b, 0);
+  const arbActivity = topicTaskActivity(allData, calEvents, dates, "arbitratge");
+  const arbTaskDone = arbActivity.reduce((s, a) => s + a.activities.length, 0);
   const trainingCount = (domainScores?.trainingMatchesThisWeek ?? []).length;
   return {
     emoji: "⚽", title: "Arbitratge", color: COLORS.domainRef,
     value: score, qualifier: "de 10, preparació",
-    bars: dates.map((_, i) => ({ v: i === 6 ? score : Math.max(0, score - (6 - i)), label: weekdayShort(dates[i]) })),
+    // Hours dedicated via calendar-linked tasks (real per-day activity, not
+    // a synthetic ramp toward today's score) — the bar's tint reflects the
+    // day's average 1–5 self-rating, so a productive hour reads darker than
+    // an unrated or low-value one.
+    bars: arbActivity.map((a, i) => ({ v: a.hours, label: weekdayShort(dates[i]), activities: a.activities, avgRating: avgRating(a.activities) })),
     kv: [
       ["Preparació", upcoming ? `${Object.values(upcoming.prep || {}).filter(Boolean).length}/${Object.keys(upcoming.prep || {}).length || "—"}` : "Cap partit actiu"],
       ["Tasques completades", String(arbTaskDone)],

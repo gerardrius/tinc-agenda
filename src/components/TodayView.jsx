@@ -7,6 +7,21 @@ import { S, COLORS } from "../lib/styles";
 import { Card, Lbl, Checkbox, TopicPill, ProgressArc } from "./ui";
 import { syncGarminNow } from "../lib/sleepMapApi";
 
+// 1–5 self-rating shown under a task once it's done — feeds the Arbitratge/
+// Relacions weekly bars' color intensity (see domainStats.js's avgRating),
+// so "did the time actually help" is captured right where the task got
+// checked off instead of a separate step.
+function TaskRating({ value, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 3, paddingLeft: 30, marginTop: -4, marginBottom: 4 }}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button key={n} onClick={() => onChange(value === n ? null : n)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 13, color: value >= n ? COLORS.warn : "#dcd3c8", lineHeight: 1 }}>★</button>
+      ))}
+      <span style={{ fontSize: 10, color: COLORS.textFaint, marginLeft: 3 }}>{value ? `${value}/5 · profit` : "valora el profit"}</span>
+    </div>
+  );
+}
+
 function QuickPill({ emoji, label, done, onClick }) {
   return (
     <button onClick={onClick} style={{ ...S.quickPill, ...(done ? S.quickPillDone : {}) }}>
@@ -47,7 +62,7 @@ function daysUntil(startISO) {
   return Math.round((start - now) / 86400000);
 }
 
-export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSleep, u, toggleHabit, persist, saveGlobal, matchState, calEvents, bannerToShow, onOpenRitual, onDismissBanner, onOpenFull, onOpenSheet, onRequestCreateSlot }) {
+export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSleep, u, toggleHabit, persist, saveGlobal, matchState, calEvents, bannerToShow, onOpenRitual, onDismissBanner, onOpenFull, onOpenSheet, onRequestCreateSlot, onMoveTaskToTomorrow }) {
   const [focusId, setFocusId] = useState(null);
   const [overflowId, setOverflowId] = useState(null);
   const [syncingGarmin, setSyncingGarmin] = useState(false);
@@ -266,21 +281,24 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
         {priorities.map((t, i) => {
           const topic = topicById(t.topic);
           return (
-            <div key={t.id} style={i === 0 ? S.checkRowFirst : S.checkRow}>
-              <Checkbox checked={t.done} onChange={() => setTaskField(t.id, "done", !t.done)} size={20} />
-              <div style={{ flex: 1 }}>
-                <input style={{ width: "100%", border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 14.5, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}
-                  value={t.label} autoFocus={focusId === t.id} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova prioritat" />
-                {t.hint && <div style={{ fontSize: 11, color: COLORS.textFaint }}>{t.hint}</div>}
+            <div key={t.id}>
+              <div style={i === 0 ? S.checkRowFirst : S.checkRow}>
+                <Checkbox checked={t.done} onChange={() => setTaskField(t.id, "done", !t.done)} size={20} />
+                <div style={{ flex: 1 }}>
+                  <input style={{ width: "100%", border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 14.5, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}
+                    value={t.label} autoFocus={focusId === t.id} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova prioritat" />
+                  {t.hint && <div style={{ fontSize: 11, color: COLORS.textFaint }}>{t.hint}</div>}
+                </div>
+                <button onClick={() => setTaskField(t.id, "topic", nextTopic(t.topic))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}><TopicPill topic={topic} /></button>
+                <button onClick={() => setOverflowId(overflowId === t.id ? null : t.id)} style={{ background: "none", border: "none", color: "#c3b8ac", cursor: "pointer", fontSize: 15 }}>⋯</button>
               </div>
-              <button onClick={() => setTaskField(t.id, "topic", nextTopic(t.topic))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}><TopicPill topic={topic} /></button>
-              <button onClick={() => setOverflowId(overflowId === t.id ? null : t.id)} style={{ background: "none", border: "none", color: "#c3b8ac", cursor: "pointer", fontSize: 15 }}>⋯</button>
+              {t.done && <TaskRating value={t.rating} onChange={(n) => setTaskField(t.id, "rating", n)} />}
             </div>
           );
         })}
         {overflowId && priorities.some((t) => t.id === overflowId) && (
           <div style={{ display: "flex", gap: 6, margin: "6px 0" }}>
-            <button onClick={() => { setTaskField(overflowId, "movedCount", (tasks.find(t=>t.id===overflowId)?.movedCount||0)+1); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Mou a demà</button>
+            <button onClick={() => { onMoveTaskToTomorrow(overflowId); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Mou a demà</button>
             <button onClick={() => { setTaskField(overflowId, "priority", false); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Treure de prioritats</button>
             <button onClick={() => { removeTask(overflowId); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center", color: COLORS.alert }}>Eliminar</button>
           </div>
@@ -303,18 +321,21 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
         {others.map((t, i) => {
           const topic = topicById(t.topic);
           return (
-            <div key={t.id} style={i === 0 ? S.checkRowFirst : S.checkRow}>
-              <Checkbox checked={t.done} onChange={() => setTaskField(t.id, "done", !t.done)} size={18} />
-              <input style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 13.5, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}
-                value={t.label} autoFocus={focusId === t.id} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova tasca" />
-              <button onClick={() => setTaskField(t.id, "topic", nextTopic(t.topic))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}><TopicPill topic={topic} /></button>
-              <button onClick={() => setOverflowId(overflowId === t.id ? null : t.id)} style={{ background: "none", border: "none", color: "#c3b8ac", cursor: "pointer", fontSize: 15 }}>⋯</button>
+            <div key={t.id}>
+              <div style={i === 0 ? S.checkRowFirst : S.checkRow}>
+                <Checkbox checked={t.done} onChange={() => setTaskField(t.id, "done", !t.done)} size={18} />
+                <input style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontFamily: "inherit", fontSize: 13.5, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}
+                  value={t.label} autoFocus={focusId === t.id} onChange={(e) => setTaskField(t.id, "label", e.target.value)} placeholder="Nova tasca" />
+                <button onClick={() => setTaskField(t.id, "topic", nextTopic(t.topic))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}><TopicPill topic={topic} /></button>
+                <button onClick={() => setOverflowId(overflowId === t.id ? null : t.id)} style={{ background: "none", border: "none", color: "#c3b8ac", cursor: "pointer", fontSize: 15 }}>⋯</button>
+              </div>
+              {t.done && <TaskRating value={t.rating} onChange={(n) => setTaskField(t.id, "rating", n)} />}
             </div>
           );
         })}
         {overflowId && others.some((t) => t.id === overflowId) && (
           <div style={{ display: "flex", gap: 6, margin: "6px 0" }}>
-            <button onClick={() => { setTaskField(overflowId, "movedCount", (tasks.find(t=>t.id===overflowId)?.movedCount||0)+1); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Mou a demà</button>
+            <button onClick={() => { onMoveTaskToTomorrow(overflowId); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Mou a demà</button>
             {canAddPriority && <button onClick={() => { setTaskField(overflowId, "priority", true); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>Marcar prioritat</button>}
             <button onClick={() => { removeTask(overflowId); setOverflowId(null); }} style={{ ...S.smBtn, flex: 1, textAlign: "center", color: COLORS.alert }}>Eliminar</button>
           </div>

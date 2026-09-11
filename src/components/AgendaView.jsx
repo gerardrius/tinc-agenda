@@ -151,18 +151,22 @@ function WeekGrid({ weekStart, calEvents, matchState, focusDate, onSelectDay }) 
         return (
           <button key={dk} onClick={() => onSelectDay(d)} style={{
             display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 2px 8px",
-            minHeight: 150, borderRadius: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+            minHeight: 150, minWidth: 0, width: "100%", overflow: "hidden", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
             background: isMatch ? "#3b5bdb12" : isSel ? "#fff" : COLORS.bg,
             border: `1px solid ${isSel ? COLORS.border : "transparent"}`,
+            boxSizing: "border-box",
           }}>
             <span style={{ fontSize: 9, visibility: isMatch ? "visible" : "hidden" }}>⚽</span>
             <span style={{ fontSize: 10, color: COLORS.textSec, letterSpacing: 0 }}>{d.toLocaleDateString("ca-ES", { weekday: "short" }).slice(0, 3)}</span>
-            <span style={{ fontSize: 16, fontWeight: 600, color: isToday ? COLORS.accent : COLORS.text, borderBottom: isToday ? `2px solid ${COLORS.accent}` : "none" }}>{d.getDate()}</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, width: "100%", marginTop: 4 }}>
+            <span style={{
+              fontSize: 13, fontWeight: 600, width: 22, height: 22, lineHeight: "22px", textAlign: "center", borderRadius: 99,
+              color: isToday ? "#fff" : COLORS.text, background: isToday ? COLORS.accent : "transparent",
+            }}>{d.getDate()}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, width: "100%", minWidth: 0, marginTop: 4 }}>
               {shown.map((e, j) => (
-                <div key={j} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                <div key={j} style={{ display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
                   <span style={{ width: 5, height: 5, borderRadius: 99, background: eventColor(e), flexShrink: 0 }} />
-                  <span style={{ fontSize: 8.5, color: "#6d6259", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 8.5, color: "#6d6259", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</span>
                 </div>
               ))}
               {extra > 0 && <span style={{ fontSize: 8.5, color: COLORS.textMuted }}>+{extra} més</span>}
@@ -177,22 +181,28 @@ function WeekGrid({ weekStart, calEvents, matchState, focusDate, onSelectDay }) 
 const DURATIONS = [30, 60, 90, 120];
 const MATCH_LETTERS = ["A", "B", "C"];
 
-export function CreateEventSheet({ slot, date, initialTitle, taskId, onClose, onCreate }) {
-  const initial = new Date(date);
-  initial.setHours(Math.floor(slot), (slot % 1) * 60, 0, 0);
+// `event`: when set, the sheet edits that existing event in place (title
+// "Editar event", a Delete action, submit calls onUpdate) instead of
+// creating a new one — same form, so the two flows can't drift apart.
+export function CreateEventSheet({ slot, date, initialTitle, taskId, event, onClose, onCreate, onUpdate, onDelete }) {
+  const editing = Boolean(event);
+  const baseDate = editing ? new Date(event.start) : new Date(date);
+  const initial = new Date(baseDate);
+  if (!editing) initial.setHours(Math.floor(slot), (slot % 1) * 60, 0, 0);
   const toHHMM = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
-  const [title, setTitle] = useState(initialTitle || "");
-  const [location, setLocation] = useState("");
-  const [link, setLink] = useState("");
+  const [title, setTitle] = useState(editing ? event.title : (initialTitle || ""));
+  const [location, setLocation] = useState(editing ? event.location || "" : "");
+  const [link, setLink] = useState(editing ? event.description || "" : "");
   const [startTime, setStartTime] = useState(toHHMM(initial));
-  const [endTime, setEndTime] = useState(toHHMM(new Date(initial.getTime() + 60 * 60000)));
-  const [topic, setTopic] = useState("arbitratge");
+  const [endTime, setEndTime] = useState(editing && event.end ? toHHMM(new Date(event.end)) : toHHMM(new Date(initial.getTime() + 60 * 60000)));
+  const [topic, setTopic] = useState(editing ? (event.topic || "arbitratge") : "arbitratge");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const buildDate = (hhmm) => {
     const [h, m] = hhmm.split(":").map(Number);
-    const d = new Date(date); d.setHours(h, m, 0, 0);
+    const d = new Date(baseDate); d.setHours(h, m, 0, 0);
     return d;
   };
   const startDate = buildDate(startTime);
@@ -217,36 +227,52 @@ export function CreateEventSheet({ slot, date, initialTitle, taskId, onClose, on
   const submit = async () => {
     if (!title.trim() || saving) return;
     setSaving(true);
+    const payload = {
+      summary: `${topicObj.emoji} ${title.trim()}`,
+      title: title.trim(),
+      location,
+      description: link.trim(),
+      startISO: startDate.toISOString(),
+      endISO: endDate.toISOString(),
+      topic,
+      taskId: editing ? event.taskId : taskId,
+    };
     try {
-      await onCreate({
-        summary: `${topicObj.emoji} ${title.trim()}`,
-        title: title.trim(),
-        location,
-        description: link.trim(),
-        startISO: startDate.toISOString(),
-        endISO: endDate.toISOString(),
-        topic,
-        taskId,
-      });
+      if (editing) await onUpdate(event.id, payload);
+      else await onCreate(payload);
       onClose();
     } catch (e) {
-      window.alert(e.message || "Error creant l'event.");
+      window.alert(e.message || (editing ? "Error actualitzant l'event." : "Error creant l'event."));
       setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (deleting || !window.confirm("Cancel·lar aquest event?")) return;
+    setDeleting(true);
+    try {
+      await onDelete(event.id);
+      onClose();
+    } catch (e) {
+      window.alert(e.message || "Error cancel·lant l'event.");
+      setDeleting(false);
     }
   };
 
   return (
     <Sheet onClose={onClose} maxHeight="82%">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <div style={{ fontSize: 19, fontWeight: 600 }}>Nou event</div>
+        <div style={{ fontSize: 19, fontWeight: 600 }}>{editing ? "Editar event" : "Nou event"}</div>
         <SheetCloseBtn onClose={onClose} />
       </div>
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        {MATCH_LETTERS.map((l) => (
-          <button key={l} onClick={() => applyMatchPreset(l)} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>⚽ Partit {l}</button>
-        ))}
-      </div>
+      {!editing && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {MATCH_LETTERS.map((l) => (
+            <button key={l} onClick={() => applyMatchPreset(l)} style={{ ...S.smBtn, flex: 1, textAlign: "center" }}>⚽ Partit {l}</button>
+          ))}
+        </div>
+      )}
 
       <input style={{ ...S.inp, marginBottom: 8, fontSize: 14 }} placeholder="Nom de l'event" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
 
@@ -278,17 +304,25 @@ export function CreateEventSheet({ slot, date, initialTitle, taskId, onClose, on
         <TopicPill topic={topicObj} />
       </button>
 
-      <button onClick={submit} disabled={!title.trim() || saving} style={{ ...S.pBtn, width: "100%", textAlign: "center", opacity: title.trim() ? 1 : 0.5, margin: 0, position: "sticky", bottom: 0 }}>
-        {saving ? "Creant…" : "Crear event"}
-      </button>
+      <div style={{ display: "flex", gap: 8, position: "sticky", bottom: 0 }}>
+        {editing && (
+          <button onClick={remove} disabled={deleting} style={{ ...S.smBtn, flex: editing ? "0 0 auto" : undefined, textAlign: "center", color: COLORS.alert }}>
+            {deleting ? "Cancel·lant…" : "Cancel·lar event"}
+          </button>
+        )}
+        <button onClick={submit} disabled={!title.trim() || saving} style={{ ...S.pBtn, flex: 1, textAlign: "center", opacity: title.trim() ? 1 : 0.5, margin: 0 }}>
+          {saving ? (editing ? "Desant…" : "Creant…") : (editing ? "Desar canvis" : "Crear event")}
+        </button>
+      </div>
     </Sheet>
   );
 }
 
-export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, matchState, googleConnected, onRequestCreateSlot, day }) {
+export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, matchState, googleConnected, onRequestCreateSlot, day, onUpdateEvent, onDeleteEvent }) {
   const [agView, setAgView] = useState("day");
   const [focusDate, setFocusDate] = useState(() => new Date());
   const [selectedIdx, setSelectedIdx] = useState(null);
+  const [editingEvent, setEditingEvent] = useState(null);
 
   const selDk = dateKey(focusDate);
   const dayEvents = (calEvents || []).filter((e) => e.start?.startsWith(selDk));
@@ -350,7 +384,10 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
             const color = eventColor(selectedEvent);
             return (
               <div style={{ ...S.evCard, borderLeft: `3px solid ${color}`, marginTop: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>{selectedEvent.title}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>{selectedEvent.title}</div>
+                  <button onClick={() => setEditingEvent(selectedEvent)} style={{ ...S.smBtn, flexShrink: 0 }}>Editar</button>
+                </div>
                 <div style={{ fontSize: 11, color: COLORS.textSec, fontFamily: "'JetBrains Mono',monospace", marginTop: 2 }}>{fmtTime(selectedEvent.start)}{selectedEvent.end ? `–${fmtTime(selectedEvent.end)}` : ""}</div>
                 {selectedEvent.location && <div style={{ fontSize: 11, color: COLORS.textSec, marginTop: 2 }}>📍 {selectedEvent.location}</div>}
                 {selectedEvent.description && <div style={{ fontSize: 11, color: COLORS.textSec, marginTop: 2 }}>🔗 {selectedEvent.description}</div>}
@@ -385,6 +422,14 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
         </div>
       )}
 
+      {editingEvent && (
+        <CreateEventSheet
+          event={editingEvent}
+          onClose={() => { setEditingEvent(null); setSelectedIdx(null); }}
+          onUpdate={onUpdateEvent}
+          onDelete={onDeleteEvent}
+        />
+      )}
     </div>
   );
 }
