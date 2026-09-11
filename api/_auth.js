@@ -26,6 +26,7 @@ function getAuthClient() {
 // Writes the 401 itself on failure so call sites don't have to.
 export async function requireUser(req, res) {
   const authClient = getAuthClient();
+  res.setHeader("X-Debug-Auth-Configured", authClient ? "yes" : "no");
   if (!authClient) return true;
 
   const header = req.headers.authorization || "";
