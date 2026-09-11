@@ -90,15 +90,20 @@ function ImportTimelineButton({ onImported }) {
     try {
       const text = await file.text();
       const json = JSON.parse(text);
-      const res = await fetch("/api/import-timeline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(json),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
-      setStatus({ ok: true, message: `${data.inserted} nits noves importades (${data.skipped_duplicates} ja existien).` });
-      invalidateSleepDataCache();
+
+      const [sleepRes, historyRes] = await Promise.all([
+        fetch("/api/import-timeline", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) }).then(async (res) => ({ ok: res.ok, data: await res.json() })),
+        fetch("/api/import-location-history", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) }).then(async (res) => ({ ok: res.ok, data: await res.json() })),
+      ]);
+
+      const parts = [];
+      if (sleepRes.ok) parts.push(`${sleepRes.data.inserted} nits noves (${sleepRes.data.skipped_duplicates} ja existien)`);
+      else parts.push(`son: error (${sleepRes.data.error || "?"})`);
+      if (historyRes.ok) parts.push(`${historyRes.data.inserted} visites noves de ${historyRes.data.processed} (${historyRes.data.skippedDuplicates} ja existien)`);
+      else parts.push(`historial: error (${historyRes.data.error || "?"})`);
+
+      setStatus({ ok: sleepRes.ok && historyRes.ok, message: parts.join(" · ") });
+      if (sleepRes.ok) invalidateSleepDataCache();
       onImported();
     } catch (err) {
       setStatus({ ok: false, message: err.message || "Error important el Timeline." });
