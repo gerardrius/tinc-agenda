@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
 import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { fetchSleepData, invalidateSleepDataCache } from "../lib/sleepMapApi";
+import { authedFetch } from "../lib/apiClient";
 import { Card, Lbl, Sheet, SheetCloseBtn } from "./ui";
 import { S, COLORS } from "../lib/styles";
 import { fmtHours } from "../lib/utils";
@@ -92,8 +93,8 @@ function ImportTimelineButton({ onImported }) {
       const json = JSON.parse(text);
 
       const [sleepRes, historyRes] = await Promise.all([
-        fetch("/api/import-timeline", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) }).then(async (res) => ({ ok: res.ok, data: await res.json() })),
-        fetch("/api/import-location-history", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) }).then(async (res) => ({ ok: res.ok, data: await res.json() })),
+        authedFetch("/api/import-timeline", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) }).then(async (res) => ({ ok: res.ok, data: await res.json() })),
+        authedFetch("/api/import-location-history", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) }).then(async (res) => ({ ok: res.ok, data: await res.json() })),
       ]);
 
       const parts = [];

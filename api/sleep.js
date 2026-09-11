@@ -1,7 +1,10 @@
 // Vercel serverless function (Node runtime). Proxies to the read-only
 // sleep-map-data Cloud Function in the garmin-sync GCP project — the bearer
 // token lives only here, server-side, never in client-side (VITE_) env vars.
+import { requireUser } from "./_auth.js";
+
 export default async function handler(req, res) {
+  if (!(await requireUser(req, res))) return;
   const token = process.env.SLEEP_MAP_READ_TOKEN;
   if (!token) {
     res.status(500).json({ error: "SLEEP_MAP_READ_TOKEN not configured" });

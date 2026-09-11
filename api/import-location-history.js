@@ -15,6 +15,7 @@
 //     {duration:{startTimestamp,endTimestamp}, location:{latitudeE7,
 //     longitudeE7,address,name}}}]}.
 import { getBigQuery } from "./_bigquery.js";
+import { requireUser } from "./_auth.js";
 
 const PROJECT = "project-d225e115-18b7-433d-ae0";
 const EARTH_RADIUS_M = 6371000;
@@ -72,6 +73,7 @@ export default async function handler(req, res) {
     res.status(405).json({ error: "method not allowed" });
     return;
   }
+  if (!(await requireUser(req, res))) return;
   try {
     const data = req.body;
     if (!data) { res.status(400).json({ error: "missing body" }); return; }

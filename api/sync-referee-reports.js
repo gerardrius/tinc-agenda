@@ -7,12 +7,14 @@
 import { google } from "googleapis";
 import { getBigQuery } from "./_bigquery.js";
 import { importRefereeReport, PROJECT } from "./_importRefereeReport.js";
+import { requireUser } from "./_auth.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "method not allowed" });
     return;
   }
+  if (!(await requireUser(req, res))) return;
   try {
     const folderId = process.env.REFEREE_REPORTS_FOLDER_ID;
     if (!folderId) { res.status(500).json({ error: "REFEREE_REPORTS_FOLDER_ID not configured" }); return; }

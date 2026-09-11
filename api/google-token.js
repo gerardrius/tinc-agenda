@@ -4,11 +4,14 @@
 // — a native app bundle can't keep a secret, so the code→token exchange
 // and the refresh_token→access_token renewal both have to happen behind
 // this proxy instead of directly from the device.
+import { requireUser } from "./_auth.js";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "method not allowed" });
     return;
   }
+  if (!(await requireUser(req, res))) return;
 
   const clientId = process.env.VITE_GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;

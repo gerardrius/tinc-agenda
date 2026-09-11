@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
+import { authedFetch } from "./apiClient";
 
 // { matches, loading, error } from api/refereeing.js — real RFEF report
 // history, refetchable after a successful import (see useImportRefereeReport).
 export function useRefereeingMatches() {
   const [state, setState] = useState({ matches: [], loading: true, error: null });
   const load = () => {
-    fetch("/api/refereeing")
+    authedFetch("/api/refereeing")
       .then((res) => res.json().then((body) => ({ ok: res.ok, body })))
       .then(({ ok, body }) => {
         if (!ok) throw new Error(body.error || "Error carregant l'historial arbitral");
@@ -26,7 +27,7 @@ export async function importRefereeReport(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-  const res = await fetch("/api/import-referee-report", {
+  const res = await authedFetch("/api/import-referee-report", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fileBase64: base64, fileName: file.name }),
@@ -40,7 +41,7 @@ export async function importRefereeReport(file) {
 // and imports/backfills anything not already recorded. Returns
 // { ok, totalInFolder, processed, results } or { ok: false, error }.
 export async function syncRefereeReportsFromDrive() {
-  const res = await fetch("/api/sync-referee-reports", { method: "POST" });
+  const res = await authedFetch("/api/sync-referee-reports", { method: "POST" });
   const data = await res.json();
   if (!res.ok) return { ok: false, error: data.error || `Error ${res.status}` };
   return { ok: true, ...data };

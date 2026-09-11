@@ -5,11 +5,14 @@
 // here, server-side — the app never holds it.
 const CLOUD_FUNCTION_URL = "https://import-timeline-3utsyvgnba-ew.a.run.app";
 
+import { requireUser } from "./_auth.js";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "method not allowed" });
     return;
   }
+  if (!(await requireUser(req, res))) return;
   const token = process.env.LIFE_TRACKING_TOKEN;
   if (!token) {
     res.status(500).json({ error: "LIFE_TRACKING_TOKEN not configured" });

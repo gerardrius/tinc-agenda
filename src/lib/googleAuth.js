@@ -31,6 +31,7 @@
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { App as CapApp } from "@capacitor/app";
+import { authedFetch } from "./apiClient";
 
 const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const STORAGE_KEY = "tinc_agenda_gcal_token";
@@ -98,7 +99,7 @@ async function codeChallenge(verifier) {
 }
 
 async function tokenRequest(body) {
-  const res = await fetch(TOKEN_ENDPOINT, {
+  const res = await authedFetch(TOKEN_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

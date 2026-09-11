@@ -6,8 +6,10 @@
 // src/lib/sleepMapApi.js merges the two: this one wins for score/hours
 // freshness, api/sleep.js still backs the sleep-location map.
 import { getBigQuery, plain } from "./_bigquery.js";
+import { requireUser } from "./_auth.js";
 
 export default async function handler(req, res) {
+  if (!(await requireUser(req, res))) return;
   try {
     const bigquery = getBigQuery();
     const [rows] = await bigquery.query({

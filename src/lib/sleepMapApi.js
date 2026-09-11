@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { authedFetch } from "./apiClient";
 
 export async function fetchSleepData() {
-  const res = await fetch("/api/sleep");
+  const res = await authedFetch("/api/sleep");
   if (!res.ok) throw new Error(`No s'han pogut carregar les dades de son (${res.status})`);
   return res.json();
 }
@@ -11,7 +12,7 @@ export async function fetchSleepData() {
 // so this is the up-to-date source for score/hours (but has no location,
 // which is why SleepMapSec still reads api/sleep.js directly for the map).
 export async function fetchGarminDaily() {
-  const res = await fetch("/api/garmin");
+  const res = await authedFetch("/api/garmin");
   if (!res.ok) throw new Error(`No s'han pogut carregar les dades de Garmin (${res.status})`);
   return res.json();
 }
@@ -45,7 +46,7 @@ export function invalidateGarminDailyCache() {
 // "I just woke up, don't make me wait for the 04:00 job") and, on success,
 // invalidates the cached daily-metrics response so the next read is fresh.
 export async function syncGarminNow() {
-  const res = await fetch("/api/sync-garmin-now", { method: "POST" });
+  const res = await authedFetch("/api/sync-garmin-now", { method: "POST" });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: data.error || `Error ${res.status}` };
   invalidateGarminDailyCache();

@@ -5,8 +5,10 @@
 import { getBigQuery, plain } from "./_bigquery.js";
 
 const PROJECT = "project-d225e115-18b7-433d-ae0";
+import { requireUser } from "./_auth.js";
 
 export default async function handler(req, res) {
+  if (!(await requireUser(req, res))) return;
   try {
     const bigquery = getBigQuery();
     const [rows] = await bigquery.query({

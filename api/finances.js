@@ -3,10 +3,12 @@
 // sample-data placeholders. One request, several queries — same shape as
 // api/sleep.js's "everything the screen needs, in one round trip" pattern.
 import { getBigQuery, plain } from "./_bigquery.js";
+import { requireUser } from "./_auth.js";
 
 const PROJECT = "imagin-finance-sync";
 
 export default async function handler(req, res) {
+  if (!(await requireUser(req, res))) return;
   try {
     const bigquery = getBigQuery();
     const run = (query) => bigquery.query({ query }).then(([rows]) => plain(rows));

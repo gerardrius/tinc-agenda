@@ -6,11 +6,14 @@
 // own auth, unrelated to any Google Cloud IAM/OIDC check.
 const GARMIN_SYNC_URL = "https://garmin-sync-819221815091.europe-west1.run.app";
 
+import { requireUser } from "./_auth.js";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "method not allowed" });
     return;
   }
+  if (!(await requireUser(req, res))) return;
   const token = process.env.GARMIN_SYNC_TOKEN;
   if (!token) {
     res.status(500).json({ error: "GARMIN_SYNC_TOKEN not configured" });

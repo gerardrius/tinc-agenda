@@ -2,12 +2,14 @@
 // "📄 Importar informe RFEF" button) — parsing/writing logic lives in
 // _importRefereeReport.js, shared with the Drive-folder sync endpoint.
 import { importRefereeReport } from "./_importRefereeReport.js";
+import { requireUser } from "./_auth.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "method not allowed" });
     return;
   }
+  if (!(await requireUser(req, res))) return;
   try {
     const { fileBase64, fileName } = req.body || {};
     if (!fileBase64) { res.status(400).json({ error: "missing fileBase64" }); return; }
