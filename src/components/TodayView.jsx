@@ -7,10 +7,14 @@ import { S, COLORS } from "../lib/styles";
 import { Card, Lbl, Checkbox, TopicPill, ProgressArc } from "./ui";
 import { syncGarminNow } from "../lib/sleepMapApi";
 
-// 1–5 self-rating shown under a task once it's done — feeds the Arbitratge/
-// Relacions weekly bars' color intensity (see domainStats.js's avgRating),
-// so "did the time actually help" is captured right where the task got
-// checked off instead of a separate step.
+// Personal-relationship topics don't get a "profit" score — rating time with
+// Muntsa/family/friends like a productivity metric misses the point of it.
+const NO_RATING_TOPICS = ["relacions", "familia", "amics"];
+
+// 1–5 self-rating shown under a task once it's done — feeds the Arbitratge
+// weekly bar's color intensity (see domainStats.js's avgRating), so "did the
+// time actually help" is captured right where the task got checked off
+// instead of a separate step.
 function TaskRating({ value, onChange }) {
   return (
     <div style={{ display: "flex", gap: 3, paddingLeft: 30, marginTop: -4, marginBottom: 4 }}>
@@ -75,7 +79,6 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
     if (!result.ok) window.alert(result.error || "Error sincronitzant amb Garmin.");
   };
   const [newHabitText, setNewHabitText] = useState("");
-  const [pickingMood, setPickingMood] = useState(false);
 
   const { ctx } = matchState;
   const info = ctx === "quart" ? matchState.quart : matchState.partitA || matchState.quart;
@@ -115,22 +118,6 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
 
   const lastNightSleep = garminSleep?.[todayKey()];
   const garminMissing = !lastNightSleep;
-  const qa = day.qa || {};
-
-  const logExpense = () => {
-    const amount = window.prompt("Import de la despesa (€)");
-    if (!amount) return;
-    const category = window.prompt("Categoria") || "Altres";
-    persist({ ...day, expenses: [...(day.expenses || []), { id: uid(), amount: parseFloat(amount) || 0, category }], qa: { ...day.qa, expense: true } });
-  };
-
-  const logSocial = () => {
-    const who = window.prompt("Amb qui?");
-    if (!who) return;
-    persist({ ...day, social: [...(day.social || []), { id: uid(), who }], qa: { ...day.qa, social: true } });
-  };
-
-  const setMood = (n) => { persist({ ...day, mood: n, qa: { ...day.qa, mood: true } }); setPickingMood(false); };
 
   // Nudges — real where the data exists, sample copy otherwise per state
   // (README nudge copy tables are per-ctx sample copy to wire against real
@@ -173,20 +160,9 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
         </div>
       )}
 
-      {/* Quick actions */}
-      <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "2px 2px 10px", width: "max-content", maxWidth: "100%" }}>
-        {canAddPriority && <QuickPill emoji="🎯" label="Prioritat" onClick={() => openTaskEventSheet(true)} />}
-        <QuickPill emoji="➕" label="Tasca" done={qa.tasca} onClick={() => openTaskEventSheet(false)} />
-        {!day.mood && <QuickPill emoji="😄" label="Registrar ànim" onClick={() => setPickingMood(!pickingMood)} />}
-        {garminMissing && <QuickPill emoji={syncingGarmin ? "⏳" : "🔄"} label={syncingGarmin ? "Sincronitzant…" : "Sincronitzar son"} onClick={syncGarmin} />}
-        <QuickPill emoji="💰" label="Despesa" done={qa.expense} onClick={logExpense} />
-        <QuickPill emoji="👥" label="Activitat social" done={qa.social} onClick={logSocial} />
-      </div>
-      {pickingMood && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-          {["😔", "🙁", "😐", "🙂", "😄"].map((e, i) => (
-            <button key={e} onClick={() => setMood(i + 1)} style={{ width: 40, height: 40, borderRadius: 10, border: `1.5px solid ${COLORS.border}`, background: "#fdfbf9", fontSize: 18, cursor: "pointer" }}>{e}</button>
-          ))}
+      {garminMissing && (
+        <div style={{ display: "flex", gap: 7, padding: "2px 2px 10px" }}>
+          <QuickPill emoji={syncingGarmin ? "⏳" : "🔄"} label={syncingGarmin ? "Sincronitzant…" : "Sincronitzar son"} onClick={syncGarmin} />
         </div>
       )}
 
@@ -292,7 +268,7 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
                 <button onClick={() => setTaskField(t.id, "topic", nextTopic(t.topic))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}><TopicPill topic={topic} /></button>
                 <button onClick={() => setOverflowId(overflowId === t.id ? null : t.id)} style={{ background: "none", border: "none", color: "#c3b8ac", cursor: "pointer", fontSize: 15 }}>⋯</button>
               </div>
-              {t.done && <TaskRating value={t.rating} onChange={(n) => setTaskField(t.id, "rating", n)} />}
+              {t.done && !NO_RATING_TOPICS.includes(t.topic) && <TaskRating value={t.rating} onChange={(n) => setTaskField(t.id, "rating", n)} />}
             </div>
           );
         })}
@@ -329,7 +305,7 @@ export function TodayView({ day, global, allData, garminSleep, onRefreshGarminSl
                 <button onClick={() => setTaskField(t.id, "topic", nextTopic(t.topic))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}><TopicPill topic={topic} /></button>
                 <button onClick={() => setOverflowId(overflowId === t.id ? null : t.id)} style={{ background: "none", border: "none", color: "#c3b8ac", cursor: "pointer", fontSize: 15 }}>⋯</button>
               </div>
-              {t.done && <TaskRating value={t.rating} onChange={(n) => setTaskField(t.id, "rating", n)} />}
+              {t.done && !NO_RATING_TOPICS.includes(t.topic) && <TaskRating value={t.rating} onChange={(n) => setTaskField(t.id, "rating", n)} />}
             </div>
           );
         })}

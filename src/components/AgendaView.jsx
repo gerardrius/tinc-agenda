@@ -318,11 +318,10 @@ export function CreateEventSheet({ slot, date, initialTitle, taskId, event, onCl
   );
 }
 
-export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, matchState, googleConnected, onRequestCreateSlot, day, onUpdateEvent, onDeleteEvent }) {
+export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, matchState, googleConnected, onRequestCreateSlot, onRequestEditEvent, day }) {
   const [agView, setAgView] = useState("day");
   const [focusDate, setFocusDate] = useState(() => new Date());
   const [selectedIdx, setSelectedIdx] = useState(null);
-  const [editingEvent, setEditingEvent] = useState(null);
 
   const selDk = dateKey(focusDate);
   const dayEvents = (calEvents || []).filter((e) => e.start?.startsWith(selDk));
@@ -386,7 +385,7 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
               <div style={{ ...S.evCard, borderLeft: `3px solid ${color}`, marginTop: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>{selectedEvent.title}</div>
-                  <button onClick={() => setEditingEvent(selectedEvent)} style={{ ...S.smBtn, flexShrink: 0 }}>Editar</button>
+                  <button onClick={() => onRequestEditEvent(selectedEvent)} style={{ ...S.smBtn, flexShrink: 0 }}>Editar</button>
                 </div>
                 <div style={{ fontSize: 11, color: COLORS.textSec, fontFamily: "'JetBrains Mono',monospace", marginTop: 2 }}>{fmtTime(selectedEvent.start)}{selectedEvent.end ? `–${fmtTime(selectedEvent.end)}` : ""}</div>
                 {selectedEvent.location && <div style={{ fontSize: 11, color: COLORS.textSec, marginTop: 2 }}>📍 {selectedEvent.location}</div>}
@@ -422,14 +421,6 @@ export function AgendaView({ calEvents, fetchCalendar, calLoading, calError, mat
         </div>
       )}
 
-      {editingEvent && (
-        <CreateEventSheet
-          event={editingEvent}
-          onClose={() => { setEditingEvent(null); setSelectedIdx(null); }}
-          onUpdate={onUpdateEvent}
-          onDelete={onDeleteEvent}
-        />
-      )}
     </div>
   );
 }

@@ -56,6 +56,7 @@ export default function App() {
   const [thursday, setThursday] = useState(null); // confirmed match info | null
   const [creatingSlot, setCreatingSlot] = useState(null); // { slot, date } | null — Agenda's "tap empty timeline" sheet,
   // rendered here (not inside AgendaView) so it isn't clipped by S.body's overflow:auto
+  const [editingEvent, setEditingEvent] = useState(null); // calendar event | null — same reason as creatingSlot above
 
   const prevMatchStateRef = useRef(null);
 
@@ -330,7 +331,7 @@ export default function App() {
           />
         )}
         {tab === "agenda" && (
-          <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} onRequestCreateSlot={setCreatingSlot} day={day} onUpdateEvent={handleUpdateEvent} onDeleteEvent={handleDeleteEvent} />
+          <AgendaView calEvents={calEvents} fetchCalendar={fetchCalendar} calLoading={calLoading} calError={calError} global={global} matchState={matchState} googleConnected={googleConnected} onRequestCreateSlot={setCreatingSlot} onRequestEditEvent={setEditingEvent} day={day} />
         )}
         {tab === "setmana" && <SetmanaView day={day} global={global} allData={allData} garminSleep={garminSleep} domainScores={domainScores} calEvents={calEvents} onOpenSheet={setSheet} onOpenFull={setFull} />}
         {tab === "jo" && <JoView day={day} global={global} allData={allData} garminSleep={garminSleep} onOpenFull={setFull} />}
@@ -368,6 +369,12 @@ export default function App() {
           slot={creatingSlot.slot} date={creatingSlot.date}
           initialTitle={creatingSlot.initialTitle} taskId={creatingSlot.linkTask?.id}
           onClose={() => setCreatingSlot(null)} onCreate={handleCreateEventForSheet}
+        />
+      )}
+      {editingEvent && (
+        <CreateEventSheet
+          event={editingEvent}
+          onClose={() => setEditingEvent(null)} onUpdate={handleUpdateEvent} onDelete={handleDeleteEvent}
         />
       )}
 
