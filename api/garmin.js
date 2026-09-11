@@ -45,6 +45,7 @@ export default async function handler(req, res) {
       awake_hours: r.awake_sleep_seconds != null ? Number(r.awake_sleep_seconds) / 3600 : null,
     }));
     res.setHeader("Cache-Control", "s-maxage=1800, stale-while-revalidate=300");
+    res.setHeader("Vary", "Authorization");
     res.status(200).json({ days });
   } catch (e) {
     res.status(500).json({ error: e.message || "BigQuery error" });

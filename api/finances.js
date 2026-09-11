@@ -50,6 +50,7 @@ export default async function handler(req, res) {
     ]);
 
     res.setHeader("Cache-Control", "s-maxage=900, stale-while-revalidate=120");
+    res.setHeader("Vary", "Authorization");
     res.status(200).json({
       netWorth: netWorth[0] || null,
       netWorthTrend,

@@ -21,6 +21,7 @@ export default async function handler(req, res) {
       `,
     });
     res.setHeader("Cache-Control", "s-maxage=900, stale-while-revalidate=120");
+    res.setHeader("Vary", "Authorization");
     res.status(200).json({ matches: plain(rows) });
   } catch (e) {
     res.status(500).json({ error: e.message || "BigQuery error" });

@@ -23,5 +23,6 @@ export default async function handler(req, res) {
 
   const data = await upstream.json();
   res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=60");
+  res.setHeader("Vary", "Authorization");
   res.status(200).json(data);
 }
