@@ -27,6 +27,9 @@ function getAuthClient() {
 export async function requireUser(req, res) {
   const authClient = getAuthClient();
   res.setHeader("X-Debug-Auth-Configured", authClient ? "yes" : "no");
+  res.setHeader("X-Debug-Url-Len", String((process.env.VITE_SUPABASE_URL || "").length));
+  res.setHeader("X-Debug-Key-Len", String((process.env.VITE_SUPABASE_ANON_KEY || "").length));
+  res.setHeader("X-Debug-Env-Keys", Object.keys(process.env).filter((k) => k.includes("SUPABASE")).join(","));
   if (!authClient) return true;
 
   const header = req.headers.authorization || "";
