@@ -4,13 +4,18 @@
 // logic as the manual-upload endpoint. Dedup is by Drive file id
 // (source_file), not by match/date, so a report that failed to parse fully
 // still won't be silently reprocessed forever — it needs a manual retry.
+//
+// Also runs daily via Vercel Cron (see vercel.json). Cron invokes with GET
+// and sends `Authorization: Bearer <CRON_SECRET>`; CRON_SECRET is set to
+// the same value as VITE_API_ACCESS_TOKEN so requireUser accepts it
+// unchanged — no separate auth path for the scheduler.
 import { google } from "googleapis";
 import { getBigQuery } from "./_bigquery.js";
 import { importRefereeReport, PROJECT } from "./_importRefereeReport.js";
 import { requireUser } from "./_auth.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
+  if (req.method !== "POST" && req.method !== "GET") {
     res.status(405).json({ error: "method not allowed" });
     return;
   }
