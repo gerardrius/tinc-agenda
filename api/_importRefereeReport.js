@@ -102,7 +102,10 @@ export async function importRefereeReport(fileBase64, fileName) {
   }
   const rubricColumns = {};
   if (rubric) {
-    rubric.sectionAverages.forEach(({ section, average }) => { rubricColumns[SECTION_TO_COLUMN[section]] = average; });
+    // The rubric_* columns are NUMERIC and a streaming insert rejects more
+    // than 9 decimals (a 7-item average like 22/7 has 15). Round here; the
+    // exact value is still kept in rubric_section_averages (FLOAT).
+    rubric.sectionAverages.forEach(({ section, average }) => { rubricColumns[SECTION_TO_COLUMN[section]] = Number(average.toFixed(2)); });
     rubricColumns.rubric_items = rubric.items.map(({ code, label, score }) => ({ code, label, score }));
     rubricColumns.rubric_section_averages = rubric.sectionAverages;
   }
