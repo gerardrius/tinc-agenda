@@ -58,7 +58,9 @@ export default async function handler(req, res) {
           rubricError: outcome.rubricError || outcome.rubricUpdateError || null,
         });
       } catch (e) {
-        results.push({ file: file.name, status: "error", error: e.message || String(e) });
+        // BigQuery's PartialFailureError carries the per-row reasons in
+        // e.errors, not e.message — same treatment as import-referee-report.js.
+        results.push({ file: file.name, status: "error", error: e.errors ? JSON.stringify(e.errors) : (e.message || String(e)) });
       }
     }
 
